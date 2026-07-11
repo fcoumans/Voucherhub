@@ -1,6 +1,6 @@
 {
-  "name": "VoucherHub",
-  "short_name": "VoucherHub",
+  "name": "VoucherWise",
+  "short_name": "VoucherWise",
   "description": "Unlock the full value of every voucher you own.",
   "start_url": "/",
   "display": "standalone",

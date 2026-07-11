@@ -925,11 +925,11 @@ const LOGO_MARK_SVG = (size) => `
 const LOGO_LOCKUP = `
   <div style="flex:1;display:flex;align-items:center;justify-content:center;gap:8px">
     ${LOGO_MARK_SVG(28)}
-    <span style="font-size:1.0625rem;font-weight:800;letter-spacing:-0.01em"><span style="color:#11233F">voucher</span><span style="color:#13B5A2">hub</span></span>
+    <span style="font-size:1.0625rem;font-weight:800;letter-spacing:-0.01em"><span style="color:#11233F">Voucher</span><span style="color:#13B5A2">Wise</span></span>
   </div>`;
 
 function renderHeader(title, backView, backParams = {}, rightAction = '') {
-  const centerContent = title === 'voucherhub'
+  const centerContent = title === 'VoucherWise'
     ? LOGO_LOCKUP
     : `<span class="header-title">${esc(title)}</span>`;
   return `
@@ -972,7 +972,7 @@ function viewAuth() {
           <rect x="38" y="35" width="22" height="14" rx="7" fill="#11233F"/>
         </svg>
       </div>
-      <h1><span style="color:#11233F">voucher</span><span style="color:#13B5A2">hub</span></h1>
+      <h1><span style="color:#11233F">Voucher</span><span style="color:#13B5A2">Wise</span></h1>
       <p>Unlock the full value of every voucher you own.</p>
     </div>
 
@@ -1033,7 +1033,7 @@ function viewHome() {
   const publicListings = allListings.filter(l => l.sellerId !== uid && !friendIds.includes(l.sellerId)).slice(0, 4);
 
   return `
-  ${renderHeader('voucherhub')}
+  ${renderHeader('VoucherWise')}
   <main class="content">
     <div class="home-header">
       <div>
@@ -1627,7 +1627,7 @@ function viewListingDetail() {
     </div>
     ` : `
     <div class="sell-hint" style="margin-bottom:16px">${icon.info} Payment is arranged directly with the seller. No payment processing in this MVP.</div>
-    <a href="mailto:${esc(l.sellerEmail)}?subject=${encodeURIComponent('Interested in your ' + l.brand + ' voucher on Voucher Hub')}" class="btn btn-primary btn-full" style="display:flex">
+    <a href="mailto:${esc(l.sellerEmail)}?subject=${encodeURIComponent('Interested in your ' + l.brand + ' voucher on VoucherWise')}" class="btn btn-primary btn-full" style="display:flex">
       ${icon.mail} Contact Seller
     </a>
     `}
@@ -1873,7 +1873,7 @@ function viewFriends() {
           <input type="email" name="email" placeholder="friend@example.com" style="flex:1;padding:11px 14px;border:1.5px solid var(--border);border-radius:10px;font-size:0.9375rem;outline:none">
           <button type="submit" class="btn btn-primary">${icon.plus2} Send</button>
         </div>
-        <span class="form-hint">They must have a Voucher Hub account. They will need to accept your request.</span>
+        <span class="form-hint">They must have a VoucherWise account. They will need to accept your request.</span>
         <div id="friend-error" class="error-msg" style="display:none;margin-top:8px"></div>
       </div>
     </form>

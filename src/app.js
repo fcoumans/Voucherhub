@@ -444,7 +444,7 @@ async function go(view, params = {}) {
   state.view = view;
   state.params = params;
   state.searchQuery = '';
-  if (view !== 'referrals' && view !== 'referral-form') state.referralBrandFilter = null;
+  if (view !== 'referral-form') state.referralBrandFilter = null;
   if (!state.currentUser) { render(); return; }
 
   switch (view) {
@@ -1720,7 +1720,11 @@ function viewReferrals() {
     if (q) visible = visible.filter(r => r.code.toLowerCase().includes(q) || r.brand.toLowerCase().includes(q));
 
     return `
-    ${renderHeader(esc(brand), 'referrals')}
+    <header class="app-header">
+      <div class="header-left"><button class="btn-back" data-action="clear-referral-brand">${icon.back}</button></div>
+      <span class="header-title">${esc(brand)}</span>
+      <div class="header-right"></div>
+    </header>
     <main class="content">
       ${tabs}
       <div class="search-bar" style="margin-bottom:16px">

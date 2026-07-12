@@ -6,8 +6,8 @@ import { supabase } from './lib/supabase.js';
 const CATEGORIES = ['Food & Drink', 'Shopping', 'Travel', 'Entertainment', 'Finance', 'Sports & Fitness', 'Beauty & Wellness', 'Mobility', 'Other'];
 const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY;
 function getReferralCategories() {
-  const cats = [...new Set(state.brands.map(b => b.category).filter(Boolean))].sort();
-  if (!cats.includes('Other')) cats.push('Other');
+  const cats = [...new Set(state.referrals.map(r => r.category).filter(c => c && c !== 'Other'))].sort();
+  if (state.referrals.some(r => !r.category || r.category === 'Other')) cats.push('Other');
   return ['All', ...cats];
 }
 
@@ -201,7 +201,7 @@ function mapReferral(row) {
     benefitReferrer: row.benefit_for_referrer || '',
     visibility:      row.visibility || 'public',
     expirationDate:  row.expiration_date || null,
-    category:        resolvedBrand?.category || 'Other',
+    category:        row.category || resolvedBrand?.category || 'Other',
     usedCount:       0, // no used_count column in referral_codes table
     createdAt:       row.created_at,
     brandData:       resolvedBrand,
@@ -641,6 +641,7 @@ async function saveReferral(data) {
     brand_id:             brandObj?.id || null,
     brand:                data.brand,
     code:                 data.code,
+    category:             data.brandCategory || null,
     referral_link:        data.link || null,
     benefit_for_new_user: data.benefitNew || null,
     benefit_for_referrer: data.benefitReferrer || null,
@@ -661,6 +662,7 @@ async function updateReferral(id, data) {
       brand_id:             brandObj?.id || null,
       brand:                data.brand,
       code:                 data.code,
+      category:             data.brandCategory || null,
       referral_link:        data.link || null,
       benefit_for_new_user: data.benefitNew || null,
       benefit_for_referrer: data.benefitReferrer || null,
@@ -1559,11 +1561,17 @@ function viewVoucherDetail() {
     <div class="sell-form" style="margin-top:12px">
       <form id="form-reminder">
         <input type="hidden" name="voucherId" value="${esc(id)}">
-        <div class="form-group">
-          <label>Reminder Date <span style="color:var(--danger)">*</span></label>
-          <input type="date" name="reminderDate" required min="${todayStr()}" value="${todayStr()}">
-          <span class="form-hint">You'll receive a push notification on this date at 9:00 AM.${v.expiryDate ? ` Expiry: ${formatDate(v.expiryDate)}` : ''}</span>
+        <div style="display:flex;gap:10px">
+          <div class="form-group" style="flex:1">
+            <label>Date <span style="color:var(--danger)">*</span></label>
+            <input type="date" name="reminderDate" required min="${todayStr()}" value="${todayStr()}">
+          </div>
+          <div class="form-group" style="flex:0 0 110px">
+            <label>Time</label>
+            <input type="time" name="reminderTime" value="09:00">
+          </div>
         </div>
+        <span class="form-hint" style="display:block;margin-top:-8px;margin-bottom:12px">Push notification on this date${v.expiryDate ? ` · Expiry: ${formatDate(v.expiryDate)}` : ''}</span>
         <button type="submit" class="btn btn-primary btn-full">${icon.bell} Save Reminder</button>
       </form>
     </div>
@@ -2086,11 +2094,8 @@ function viewProfile() {
     <div class="settings-list" style="margin-top:16px">
       <button class="settings-item" data-action="toggle-push" id="btn-push-toggle">
         <div class="si-icon" style="background:#FFF3E0">${icon.bell}</div>
-        <div class="si-text"><div class="si-title">Notifications</div><div class="si-subtitle" id="push-status-label">Loading…</div></div>
-      </button>
-      <button class="settings-item" data-action="test-push" id="btn-test-push">
-        <div class="si-icon" style="background:#FFF3E0">${icon.bell}</div>
-        <div class="si-text"><div class="si-title">Send Test Notification</div><div class="si-subtitle">Verify push works on this device</div></div>
+        <div class="si-text"><div class="si-title">Push Notifications</div><div class="si-subtitle" id="push-status-label">Loading…</div></div>
+        <div class="push-toggle" id="push-toggle-track"><div class="push-toggle-thumb"></div></div>
       </button>
       <button class="settings-item danger" data-action="logout">
         <div class="si-icon" style="background:var(--danger-light)">${icon.logout}</div>
@@ -2204,13 +2209,23 @@ function render() {
 }
 
 async function updatePushStatusLabel() {
-  const label = document.getElementById('push-status-label');
+  const label  = document.getElementById('push-status-label');
+  const track  = document.getElementById('push-toggle-track');
   if (!label) return;
   const status = await getPushStatus();
-  if (status === 'unsupported') { label.textContent = 'Not supported on this device'; }
-  else if (status === 'denied') { label.textContent = 'Blocked — enable in browser settings'; }
-  else if (status === 'subscribed') { label.textContent = 'Enabled — tap to disable'; }
-  else { label.textContent = 'Disabled — tap to enable'; }
+  if (status === 'unsupported') {
+    label.textContent = 'Not supported on this device';
+    if (track) track.classList.remove('on');
+  } else if (status === 'denied') {
+    label.textContent = 'Blocked in system settings';
+    if (track) track.classList.remove('on');
+  } else if (status === 'subscribed') {
+    label.textContent = 'Reminders are enabled';
+    if (track) track.classList.add('on');
+  } else {
+    label.textContent = 'Tap to enable reminders';
+    if (track) track.classList.remove('on');
+  }
 }
 
 /* ============================================================
@@ -2468,23 +2483,6 @@ async function handleAction(el, e) {
         await subscribeToPush();
       }
       updatePushStatusLabel();
-      break;
-    }
-
-    case 'test-push': {
-      const status = await getPushStatus();
-      if (status !== 'subscribed') { showToast('Enable notifications first'); break; }
-      try {
-        const reg = await navigator.serviceWorker.ready;
-        await reg.showNotification('VoucherWise', {
-          body: 'Push notifications are working!',
-          icon: '/icon.svg',
-          badge: '/icon.svg',
-        });
-      } catch (err) {
-        showToast('Could not send test notification');
-        console.error('test-push error:', err);
-      }
       break;
     }
 

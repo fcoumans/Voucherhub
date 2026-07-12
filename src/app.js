@@ -27,7 +27,7 @@ const state = {
   pendingRequests: [],   // incoming friend requests { id, requesterId, name, email }
   reminders:  [],   // notifications rows
   searchQuery: '',
-  activeFilter: 'all',
+  activeFilter: 'active',
   activeSort: 'expiry',
   marketplaceTab: 'browse',
   referralTab: 'public',
@@ -88,7 +88,7 @@ const getStatus = (v) => {
   if (!v.expiryDate) return 'active';
   const d = daysUntil(v.expiryDate);
   if (d < 0) return 'expired';
-  if (d <= 90) return 'expiring';
+  if (d <= 30) return 'expiring';
   return 'active';
 };
 
@@ -1275,16 +1275,30 @@ function viewVouchers() {
     return s === filter;
   });
 
+  const statusOrder = { active: 0, expiring: 0, used: 1, sold: 1, expired: 2, listed: 0 };
   if (sort === 'expiry') {
     vouchers.sort((a, b) => {
+      const sa = statusOrder[getStatus(a)] ?? 3;
+      const sb = statusOrder[getStatus(b)] ?? 3;
+      if (sa !== sb) return sa - sb;
       const da = a.expiryDate ? daysUntil(a.expiryDate) : Infinity;
       const db2 = b.expiryDate ? daysUntil(b.expiryDate) : Infinity;
       return da - db2;
     });
   } else if (sort === 'value') {
-    vouchers.sort((a, b) => parseFloat(b.value || 0) - parseFloat(a.value || 0));
+    vouchers.sort((a, b) => {
+      const sa = statusOrder[getStatus(a)] ?? 3;
+      const sb = statusOrder[getStatus(b)] ?? 3;
+      if (sa !== sb) return sa - sb;
+      return parseFloat(b.value || 0) - parseFloat(a.value || 0);
+    });
   } else {
-    vouchers.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    vouchers.sort((a, b) => {
+      const sa = statusOrder[getStatus(a)] ?? 3;
+      const sb = statusOrder[getStatus(b)] ?? 3;
+      if (sa !== sb) return sa - sb;
+      return new Date(b.createdAt) - new Date(a.createdAt);
+    });
   }
 
   const allV   = state.vouchers.filter(v => getStatus(v) !== 'listed');
@@ -1533,10 +1547,10 @@ function viewVoucherDetail() {
     ` : ''}
     ` : ''}
 
-    ${v.expiryDate && s !== 'expired' && s !== 'used' && s !== 'sold' ? `
+    ${s !== 'expired' && s !== 'used' && s !== 'sold' ? `
     <div style="margin-top:10px">
       <button class="btn btn-ghost btn-full" data-action="${showReminderForm ? 'hide-reminder' : 'show-reminder'}" data-id="${esc(id)}">
-        ${icon.bell} ${showReminderForm ? 'Cancel Reminder' : 'Set Reminder'}
+        ${icon.bell} ${showReminderForm ? 'Cancel' : 'Schedule Reminder'}
       </button>
     </div>
     ` : ''}
@@ -1547,12 +1561,8 @@ function viewVoucherDetail() {
         <input type="hidden" name="voucherId" value="${esc(id)}">
         <div class="form-group">
           <label>Reminder Date <span style="color:var(--danger)">*</span></label>
-          <input type="date" name="reminderDate" required min="${todayStr()}">
-          <span class="form-hint">Expiry: ${formatDate(v.expiryDate)}</span>
-        </div>
-        <div class="form-group">
-          <label>Note (optional)</label>
-          <input type="text" name="note" placeholder="e.g. Check if still valid">
+          <input type="date" name="reminderDate" required min="${todayStr()}" value="${todayStr()}">
+          <span class="form-hint">You'll receive a push notification on this date at 9:00 AM.${v.expiryDate ? ` Expiry: ${formatDate(v.expiryDate)}` : ''}</span>
         </div>
         <button type="submit" class="btn btn-primary btn-full">${icon.bell} Save Reminder</button>
       </form>
@@ -2078,6 +2088,10 @@ function viewProfile() {
         <div class="si-icon" style="background:#FFF3E0">${icon.bell}</div>
         <div class="si-text"><div class="si-title">Notifications</div><div class="si-subtitle" id="push-status-label">Loading…</div></div>
       </button>
+      <button class="settings-item" data-action="test-push" id="btn-test-push">
+        <div class="si-icon" style="background:#FFF3E0">${icon.bell}</div>
+        <div class="si-text"><div class="si-title">Send Test Notification</div><div class="si-subtitle">Verify push works on this device</div></div>
+      </button>
       <button class="settings-item danger" data-action="logout">
         <div class="si-icon" style="background:var(--danger-light)">${icon.logout}</div>
         <div class="si-text"><div class="si-title">Log Out</div></div>
@@ -2454,6 +2468,23 @@ async function handleAction(el, e) {
         await subscribeToPush();
       }
       updatePushStatusLabel();
+      break;
+    }
+
+    case 'test-push': {
+      const status = await getPushStatus();
+      if (status !== 'subscribed') { showToast('Enable notifications first'); break; }
+      try {
+        const reg = await navigator.serviceWorker.ready;
+        await reg.showNotification('VoucherWise', {
+          body: 'Push notifications are working!',
+          icon: '/icon.svg',
+          badge: '/icon.svg',
+        });
+      } catch (err) {
+        showToast('Could not send test notification');
+        console.error('test-push error:', err);
+      }
       break;
     }
 

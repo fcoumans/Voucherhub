@@ -518,7 +518,10 @@ async function register(name, email, password) {
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
-    options: { data: { name: name.trim() } },
+    options: {
+      data: { name: name.trim() },
+      emailRedirectTo: `${window.location.origin}/`,
+    },
   });
   if (error) return error.message;
   // Supabase returns no error but empty identities when email is already registered
@@ -1927,13 +1930,13 @@ function viewReferralForm() {
         <span class="form-hint">Auto-filled when you pick a known brand · you can also set it manually</span>
       </div>
       <div class="form-group">
-        <label>Referral Code <span style="color:var(--danger)">*</span></label>
-        <input type="text" name="code" placeholder="Your referral code" value="${esc(r?.code||'')}" required>
+        <label>Referral Code <span style="color:var(--text-muted);font-weight:400;font-size:0.8125rem">or link below</span></label>
+        <input type="text" name="code" placeholder="Your referral code" value="${esc(r?.code||'')}">
       </div>
       <div class="form-group">
-        <label>Referral Link</label>
+        <label>Referral Link <span style="color:var(--text-muted);font-weight:400;font-size:0.8125rem">or code above</span></label>
         <input type="url" name="link" placeholder="https://…" value="${esc(r?.link||'')}">
-        <span class="form-hint">Optional direct signup link</span>
+        <span class="form-hint">Use this when there's no code, just a signup link</span>
       </div>
       <div class="form-group">
         <label>Benefit for New User</label>
@@ -2626,7 +2629,8 @@ async function handleSubmit(e) {
 
   if (form.id === 'form-referral') {
     const d = formData(form);
-    if (!d.brand.trim() || !d.code.trim()) return;
+    if (!d.brand.trim()) { showToast('Please enter a brand name'); return; }
+    if (!d.code.trim() && !(d.link || '').trim()) { showToast('Please enter a referral code or link'); return; }
     const btn = form.querySelector('[type=submit]');
     if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
     const payload = {
@@ -2670,6 +2674,13 @@ async function handleSubmit(e) {
    INIT
    ============================================================ */
 async function init() {
+  // Detect email confirmation / password-reset link in URL
+  const urlSearch = new URLSearchParams(window.location.search);
+  const urlHash   = new URLSearchParams(window.location.hash.replace('#', '?'));
+  const confirmType = urlSearch.get('type') || urlHash.get('type');
+  const isEmailConfirm = confirmType === 'email' || confirmType === 'signup';
+  if (isEmailConfirm) window.history.replaceState(null, '', '/');
+
   const { data: { session } } = await supabase.auth.getSession();
   if (session) {
     state.currentUser = mapUser(session.user);
@@ -2682,6 +2693,10 @@ async function init() {
   }
   render();
 
+  if (isEmailConfirm && session) {
+    setTimeout(() => showToast('Email confirmed — welcome to VoucherWise!'), 300);
+  }
+
   // Handle email confirmation link — user clicks link in email, session fires here
   supabase.auth.onAuthStateChange(async (event, session) => {
     if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session && !state.currentUser) {
@@ -2690,6 +2705,9 @@ async function init() {
       await fetchVouchers();
       await Promise.all([fetchBrands(), fetchListings(), fetchFriendIds(), fetchPendingRequests(), fetchReminders()]);
       render();
+      if (isEmailConfirm) {
+        setTimeout(() => showToast('Email confirmed — welcome to VoucherWise!'), 300);
+      }
     }
   });
 }

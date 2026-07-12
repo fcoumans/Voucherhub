@@ -66,6 +66,21 @@ const todayStr = () => {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 };
 
+const nowDateTimeLocalStr = () => {
+  const d = new Date();
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+};
+
+const defaultReminderDateTimeStr = () => {
+  const d = new Date();
+  const pad = n => String(n).padStart(2, '0');
+  // Default to 9AM today, or 9AM tomorrow if past 9AM
+  if (d.getHours() >= 9) d.setDate(d.getDate() + 1);
+  d.setHours(9, 0, 0, 0);
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T09:00`;
+};
+
 const formatMonthYear = (dateStr) => {
   if (!dateStr) return '';
   const [y, m] = dateStr.split('-').map(Number);
@@ -219,7 +234,8 @@ function mapReminder(row) {
     voucherId:    row.voucher_id,
     brand:        voucher?.brand || '',
     reminderDate: row.reminder_date,
-    note:         '',   // notifications schema has no note column
+    reminderTime: row.reminder_time ? row.reminder_time.slice(0, 5) : null,
+    note:         '',
     dismissed:    row.sent || false,
     createdAt:    row.created_at,
   };
@@ -455,8 +471,10 @@ async function go(view, params = {}) {
       await Promise.all([fetchReminders(), fetchListings(), fetchFriendIds(), fetchPendingRequests()]);
       break;
     case 'vouchers':
-    case 'voucher-detail':
       await fetchVouchers();
+      break;
+    case 'voucher-detail':
+      await Promise.all([fetchVouchers(), fetchReminders()]);
       break;
     case 'voucher-form':
       await Promise.all([fetchVouchers(), fetchBrands()]);
@@ -768,17 +786,17 @@ async function removeFriend(friendId) {
 /* ============================================================
    REMINDER ACTIONS
    ============================================================ */
-async function setReminder(voucherId, date) {
-  // notifications schema has no note column — note param accepted by form but not stored
+async function setReminder(voucherId, date, time) {
   const { error } = await supabase.from('notifications').insert({
     user_id:           state.currentUser.id,
     voucher_id:        voucherId,
     notification_type: 'reminder',
     reminder_date:     date,
+    reminder_time:     time || null,
     sent:              false,
   });
   if (error) { console.error('setReminder error:', error); showToast('Error setting reminder'); return; }
-  showToast('Reminder set!');
+  showToast('Reminder saved!');
   go('voucher-detail', { id: voucherId });
 }
 
@@ -1102,9 +1120,6 @@ function viewHome() {
   const hour      = new Date().getHours();
   const greeting  = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
 
-  const today = todayStr();
-  const dueReminders = state.reminders.filter(r => !r.dismissed && r.reminderDate <= today);
-
   const friendIds     = state.friendIds;
   const allListings   = state.listings;
   const friendListings = allListings.filter(l => l.sellerId !== uid && friendIds.includes(l.sellerId));
@@ -1125,21 +1140,6 @@ function viewHome() {
       </button>
     </div>
 
-    ${dueReminders.length > 0 ? `
-    <div style="margin-bottom:16px">
-      ${dueReminders.map(r => `
-        <div class="reminder-banner">
-          <span style="color:var(--accent);flex-shrink:0;display:flex">${icon.bell}</span>
-          <div style="flex:1">
-            <strong>${esc(r.brand)}</strong> reminder
-            ${r.note ? `<div style="font-size:0.8125rem;color:var(--text-muted);margin-top:2px">${esc(r.note)}</div>` : ''}
-          </div>
-          <button class="btn btn-sm btn-ghost" data-nav="voucher-detail" data-id="${esc(r.voucherId)}">View</button>
-          <button class="btn-icon" data-action="dismiss-reminder" data-id="${esc(r.id)}" title="Dismiss">✕</button>
-        </div>
-      `).join('')}
-    </div>
-    ` : ''}
 
     <div class="stats-card">
       <div class="stat">
@@ -1452,6 +1452,8 @@ function viewVoucherDetail() {
     ? `<button class="btn-icon" data-nav="voucher-form" data-id="${esc(id)}" title="Edit">${icon.edit}</button>`
     : '';
 
+  const activeReminder = state.reminders.find(r => r.voucherId === id && !r.dismissed);
+
   return `
   ${renderHeader(v.brand, 'vouchers', {}, rightAction)}
   <main class="content">
@@ -1460,6 +1462,14 @@ function viewVoucherDetail() {
       <div class="vd-value">${formatCurrency(v.balance != null ? v.balance : v.value, v.currency)}</div>
       ${badge(s)}
     </div>
+
+    ${activeReminder ? `
+    <div class="reminder-info-bar">
+      ${icon.bell}
+      <span>Reminder set for <strong>${formatDate(activeReminder.reminderDate)}</strong>${activeReminder.reminderTime ? ` at ${activeReminder.reminderTime}` : ''}</span>
+      <button class="btn-icon" data-action="dismiss-reminder" data-id="${esc(activeReminder.id)}" title="Remove reminder" style="margin-left:auto;opacity:0.6;font-size:0.75rem">✕</button>
+    </div>
+    ` : ''}
 
     ${v.code ? `
     <p class="code-label">Voucher Code</p>
@@ -1561,18 +1571,20 @@ function viewVoucherDetail() {
     <div class="sell-form" style="margin-top:12px">
       <form id="form-reminder">
         <input type="hidden" name="voucherId" value="${esc(id)}">
-        <div class="form-row">
-          <div class="form-group">
-            <label>Date <span style="color:var(--danger)">*</span></label>
-            <input type="date" name="reminderDate" required min="${todayStr()}" value="${todayStr()}">
-          </div>
-          <div class="form-group">
-            <label>Time</label>
-            <input type="time" name="reminderTime" value="09:00">
-          </div>
+        <div class="form-group" style="margin-bottom:8px">
+          <label style="font-size:0.8125rem;font-weight:600;margin-bottom:6px;display:block">When should we remind you?</label>
+          <input type="datetime-local" name="reminderDateTime" required
+            min="${nowDateTimeLocalStr()}"
+            value="${defaultReminderDateTimeStr()}"
+            style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;font-size:0.9375rem;background:var(--bg);color:var(--text)">
         </div>
-        <p class="form-hint" style="margin-bottom:12px">Push notification on this date${v.expiryDate ? ` · Expiry: ${formatDate(v.expiryDate)}` : ''}</p>
-        <button type="submit" class="btn btn-primary btn-full">${icon.bell} Save Reminder</button>
+        <p class="form-hint" style="margin-bottom:12px;font-size:0.75rem">
+          ${icon.bell} Push notification at this time${v.expiryDate ? ` · Expires ${formatDate(v.expiryDate)}` : ''}
+        </p>
+        <div style="display:flex;gap:8px">
+          <button type="button" class="btn btn-ghost" data-action="hide-reminder" style="flex:0 0 auto">Cancel</button>
+          <button type="submit" class="btn btn-primary btn-full">Save Reminder</button>
+        </div>
       </form>
     </div>
     ` : ''}
@@ -2606,8 +2618,9 @@ async function handleSubmit(e) {
 
   if (form.id === 'form-reminder') {
     const d = formData(form);
-    if (!d.reminderDate) return;
-    await setReminder(d.voucherId, d.reminderDate);
+    if (!d.reminderDateTime) return;
+    const [date, time] = d.reminderDateTime.split('T');
+    await setReminder(d.voucherId, date, time);
     return;
   }
 

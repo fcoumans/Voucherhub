@@ -27,12 +27,41 @@ function buildMessage(brand: string, days: number): { title: string; body: strin
   return { title: 'VoucherWise', body: `Your ${brand} voucher expires in 1 month.` };
 }
 
+async function sendPush(userId: string, payload: string): Promise<number> {
+  const { data: subs } = await supabase
+    .from('push_subscriptions')
+    .select('endpoint, p256dh, auth')
+    .eq('user_id', userId);
+
+  let count = 0;
+  for (const sub of (subs ?? [])) {
+    try {
+      await webpush.sendNotification(
+        { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+        payload
+      );
+      count++;
+    } catch (err: any) {
+      console.error('push error:', err.statusCode, sub.endpoint);
+      if (err.statusCode === 404 || err.statusCode === 410) {
+        await supabase.from('push_subscriptions').delete().eq('endpoint', sub.endpoint);
+      }
+    }
+  }
+  return count;
+}
+
 Deno.serve(async (req) => {
   const auth = req.headers.get('Authorization');
   if (auth !== `Bearer ${SUPABASE_SERVICE_KEY}`) {
     return new Response('Unauthorized', { status: 401 });
   }
 
+  const todayStr = new Date().toISOString().split('T')[0];
+  let sent = 0;
+  let skipped = 0;
+
+  // --- Expiry reminders ---
   const { data: vouchers, error: vErr } = await supabase
     .from('vouchers')
     .select('id, user_id, brand, expiry_date')
@@ -40,9 +69,6 @@ Deno.serve(async (req) => {
     .not('expiry_date', 'is', null);
 
   if (vErr) return new Response(JSON.stringify({ error: vErr.message }), { status: 500 });
-
-  let sent = 0;
-  let skipped = 0;
 
   for (const voucher of (vouchers ?? [])) {
     const days = daysUntil(voucher.expiry_date);
@@ -58,30 +84,10 @@ Deno.serve(async (req) => {
 
     if (logged) { skipped++; continue; }
 
-    const { data: subs } = await supabase
-      .from('push_subscriptions')
-      .select('endpoint, p256dh, auth')
-      .eq('user_id', voucher.user_id);
-
-    if (!subs?.length) { skipped++; continue; }
-
     const { title, body } = buildMessage(voucher.brand, days);
     const payload = JSON.stringify({ title, body, url: '/' });
-
-    for (const sub of subs) {
-      try {
-        await webpush.sendNotification(
-          { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
-          payload
-        );
-        sent++;
-      } catch (err: any) {
-        console.error('push error:', err.statusCode, sub.endpoint);
-        if (err.statusCode === 404 || err.statusCode === 410) {
-          await supabase.from('push_subscriptions').delete().eq('endpoint', sub.endpoint);
-        }
-      }
-    }
+    const n = await sendPush(voucher.user_id, payload);
+    sent += n;
 
     await supabase.from('push_notification_log').insert({
       user_id:    voucher.user_id,
@@ -90,5 +96,44 @@ Deno.serve(async (req) => {
     });
   }
 
-  return new Response(JSON.stringify({ sent, skipped }), { status: 200 });
+  // --- Manual reminders ---
+  const { data: manualReminders, error: rErr } = await supabase
+    .from('notifications')
+    .select('id, user_id, voucher_id, reminder_time')
+    .eq('notification_type', 'reminder')
+    .eq('sent', false)
+    .lte('reminder_date', todayStr);
+
+  if (rErr) console.error('fetchReminders error:', rErr.message);
+
+  for (const r of (manualReminders ?? [])) {
+    // If a specific time was set, only send once we've passed that hour (UTC comparison)
+    if (r.reminder_time) {
+      const nowHHMM = new Date().toISOString().slice(11, 16); // 'HH:MM' UTC
+      if (r.reminder_time.slice(0, 5) > nowHHMM) { skipped++; continue; }
+    }
+
+    const { data: voucher } = await supabase
+      .from('vouchers')
+      .select('brand')
+      .eq('id', r.voucher_id)
+      .maybeSingle();
+
+    const brand = voucher?.brand || 'voucher';
+    const payload = JSON.stringify({
+      title: 'VoucherWise',
+      body: `Reminder: your ${brand} voucher`,
+      url: `/`,
+    });
+
+    const n = await sendPush(r.user_id, payload);
+    sent += n;
+
+    await supabase
+      .from('notifications')
+      .update({ sent: true, sent_at: new Date().toISOString() })
+      .eq('id', r.id);
+  }
+
+  return new Response(JSON.stringify({ sent, skipped, manualProcessed: manualReminders?.length ?? 0 }), { status: 200 });
 });

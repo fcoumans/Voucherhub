@@ -1561,17 +1561,17 @@ function viewVoucherDetail() {
     <div class="sell-form" style="margin-top:12px">
       <form id="form-reminder">
         <input type="hidden" name="voucherId" value="${esc(id)}">
-        <div style="display:flex;gap:10px">
-          <div class="form-group" style="flex:1">
+        <div class="form-row">
+          <div class="form-group">
             <label>Date <span style="color:var(--danger)">*</span></label>
             <input type="date" name="reminderDate" required min="${todayStr()}" value="${todayStr()}">
           </div>
-          <div class="form-group" style="flex:0 0 110px">
+          <div class="form-group">
             <label>Time</label>
             <input type="time" name="reminderTime" value="09:00">
           </div>
         </div>
-        <span class="form-hint" style="display:block;margin-top:-8px;margin-bottom:12px">Push notification on this date${v.expiryDate ? ` · Expiry: ${formatDate(v.expiryDate)}` : ''}</span>
+        <p class="form-hint" style="margin-bottom:12px">Push notification on this date${v.expiryDate ? ` · Expiry: ${formatDate(v.expiryDate)}` : ''}</p>
         <button type="submit" class="btn btn-primary btn-full">${icon.bell} Save Reminder</button>
       </form>
     </div>
@@ -2607,7 +2607,7 @@ async function handleSubmit(e) {
   if (form.id === 'form-reminder') {
     const d = formData(form);
     if (!d.reminderDate) return;
-    setReminder(d.voucherId, d.reminderDate, d.note);
+    await setReminder(d.voucherId, d.reminderDate);
     return;
   }
 

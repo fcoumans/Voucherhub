@@ -302,7 +302,7 @@ p { line-height: 1.5; }
   white-space: nowrap;
 }
 
-.badge-success { background: var(--success-light); color: var(--success); }
+.badge-success { color: var(--success); }
 .badge-warning { background: var(--warning-light); color: var(--warning); }
 .badge-danger { background: var(--danger-light); color: var(--danger); }
 .badge-primary { background: var(--primary-light); color: var(--primary-dark); }

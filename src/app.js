@@ -419,7 +419,7 @@ async function ensureBrand(name, category) {
   const existing = state.brands.find(b => b.name.toLowerCase() === normalized.toLowerCase());
   if (existing) {
     // Write category to DB if we now have one and the brand didn't before
-    if (category && !existing.category) {
+    if (category && category !== existing.category) {
       await supabase.from('brands').update({ category }).eq('id', existing.id);
       existing.category = category;
     }

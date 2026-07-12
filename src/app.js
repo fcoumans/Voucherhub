@@ -4,6 +4,7 @@ import { supabase } from './lib/supabase.js';
    CONFIG
    ============================================================ */
 const CATEGORIES = ['Food & Drink', 'Shopping', 'Travel', 'Entertainment', 'Finance', 'Sports & Fitness', 'Beauty & Wellness', 'Mobility', 'Other'];
+const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY;
 function getReferralCategories() {
   const cats = [...new Set(state.brands.map(b => b.category).filter(Boolean))].sort();
   if (!cats.includes('Other')) cats.push('Other');
@@ -788,6 +789,81 @@ async function dismissReminder(id) {
   if (error) { console.error('dismissReminder error:', error); showToast('Error dismissing reminder'); return; }
   state.reminders = state.reminders.map(r => r.id === id ? { ...r, dismissed: true } : r);
   render();
+}
+
+/* ============================================================
+   PUSH NOTIFICATIONS
+   ============================================================ */
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const raw = atob(base64);
+  return Uint8Array.from([...raw].map(c => c.charCodeAt(0)));
+}
+
+async function subscribeToPush() {
+  if (!('Notification' in window) || !('serviceWorker' in navigator)) {
+    showToast('Push notifications not supported on this device');
+    return false;
+  }
+  if (!VAPID_PUBLIC_KEY) { console.error('VAPID_PUBLIC_KEY not set'); return false; }
+
+  const permission = await Notification.requestPermission();
+  if (permission !== 'granted') {
+    showToast('Notification permission denied');
+    return false;
+  }
+
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) {
+      sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+      });
+    }
+    const { endpoint, keys } = sub.toJSON();
+    const { error } = await supabase.from('push_subscriptions').upsert({
+      user_id:  state.currentUser.id,
+      endpoint,
+      p256dh:   keys.p256dh,
+      auth:     keys.auth,
+    }, { onConflict: 'endpoint' });
+    if (error) { console.error('push subscription save error:', error); showToast('Error enabling notifications'); return false; }
+    showToast('Notifications enabled!');
+    return true;
+  } catch (err) {
+    console.error('subscribeToPush error:', err);
+    showToast('Could not enable notifications');
+    return false;
+  }
+}
+
+async function unsubscribeFromPush() {
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    if (sub) {
+      await supabase.from('push_subscriptions').delete().eq('endpoint', sub.endpoint);
+      await sub.unsubscribe();
+    }
+    showToast('Notifications disabled');
+  } catch (err) {
+    console.error('unsubscribeFromPush error:', err);
+  }
+}
+
+async function getPushStatus() {
+  if (!('Notification' in window) || !('serviceWorker' in navigator)) return 'unsupported';
+  if (Notification.permission === 'denied') return 'denied';
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    return sub ? 'subscribed' : 'unsubscribed';
+  } catch {
+    return 'unsubscribed';
+  }
 }
 
 /* ============================================================
@@ -1998,6 +2074,10 @@ function viewProfile() {
     </div>
 
     <div class="settings-list" style="margin-top:16px">
+      <button class="settings-item" data-action="toggle-push" id="btn-push-toggle">
+        <div class="si-icon" style="background:#FFF3E0">${icon.bell}</div>
+        <div class="si-text"><div class="si-title">Notifications</div><div class="si-subtitle" id="push-status-label">Loading…</div></div>
+      </button>
       <button class="settings-item danger" data-action="logout">
         <div class="si-icon" style="background:var(--danger-light)">${icon.logout}</div>
         <div class="si-text"><div class="si-title">Log Out</div></div>
@@ -2106,6 +2186,17 @@ function render() {
   if (!el) return;
   el.innerHTML = (!state.currentUser ? (VIEWS[state.view] || viewAuth)() : (VIEWS[state.view] || viewHome)());
   attachListeners();
+  if (state.view === 'profile') updatePushStatusLabel();
+}
+
+async function updatePushStatusLabel() {
+  const label = document.getElementById('push-status-label');
+  if (!label) return;
+  const status = await getPushStatus();
+  if (status === 'unsupported') { label.textContent = 'Not supported on this device'; }
+  else if (status === 'denied') { label.textContent = 'Blocked — enable in browser settings'; }
+  else if (status === 'subscribed') { label.textContent = 'Enabled — tap to disable'; }
+  else { label.textContent = 'Disabled — tap to enable'; }
 }
 
 /* ============================================================
@@ -2352,6 +2443,19 @@ async function handleAction(el, e) {
     case 'decline-request':
       declineFriendRequest(id);
       break;
+
+    case 'toggle-push': {
+      const status = await getPushStatus();
+      if (status === 'unsupported') { showToast('Not supported on this device'); break; }
+      if (status === 'denied') { showToast('Enable notifications in your browser/phone settings'); break; }
+      if (status === 'subscribed') {
+        await unsubscribeFromPush();
+      } else {
+        await subscribeToPush();
+      }
+      updatePushStatusLabel();
+      break;
+    }
 
     case 'logout':
       showConfirm({ title: 'Log Out?', message: 'You will be returned to the login screen.', confirmLabel: 'Log Out', onConfirm: logout });

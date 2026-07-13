@@ -661,7 +661,7 @@ async function saveReferral(data) {
     user_id:              state.currentUser.id,
     brand_id:             brandObj?.id || null,
     brand:                data.brand,
-    code:                 data.code,
+    code:                 data.code || null,
     category:             data.brandCategory || null,
     referral_link:        data.link || null,
     benefit_for_new_user: data.benefitNew || null,
@@ -682,7 +682,7 @@ async function updateReferral(id, data) {
     .update({
       brand_id:             brandObj?.id || null,
       brand:                data.brand,
-      code:                 data.code,
+      code:                 data.code || null,
       category:             data.brandCategory || null,
       referral_link:        data.link || null,
       benefit_for_new_user: data.benefitNew || null,

@@ -1056,12 +1056,99 @@ function pwField(id, name, label, placeholder, autocomplete = 'current-password'
 }
 
 /* ============================================================
+   VIEW: WELCOME (onboarding splash)
+   ============================================================ */
+function viewWelcome() {
+  return `
+  <div class="welcome-screen">
+    <div class="welcome-hero">
+      <svg viewBox="0 0 400 440" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMax slice">
+        <defs>
+          <linearGradient id="welcome-sky" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#FFFFFF"/>
+            <stop offset="55%" stop-color="#FDF6EF"/>
+            <stop offset="100%" stop-color="#FBE7D6"/>
+          </linearGradient>
+          <radialGradient id="welcome-glow" cx="50%" cy="38%" r="55%">
+            <stop offset="0%" stop-color="var(--accent)" stop-opacity="0.14"/>
+            <stop offset="70%" stop-color="var(--accent)" stop-opacity="0.05"/>
+            <stop offset="100%" stop-color="var(--accent)" stop-opacity="0"/>
+          </radialGradient>
+          <filter id="welcome-shadow" x="-50%" y="-50%" width="200%" height="200%">
+            <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="var(--dark)" flood-opacity="0.16"/>
+          </filter>
+          <clipPath id="welcome-curve">
+            <path d="M0,0 H400 V352 C 300,414 100,414 0,352 Z"/>
+          </clipPath>
+        </defs>
+
+        <g clip-path="url(#welcome-curve)">
+          <rect width="400" height="440" fill="url(#welcome-sky)"/>
+          <rect width="400" height="440" fill="url(#welcome-glow)"/>
+
+          <g transform="translate(88,182) rotate(-12)" filter="url(#welcome-shadow)">
+            <rect width="150" height="94" rx="14" fill="var(--dark)"/>
+            <circle cx="22" cy="22" r="8" fill="#FFFFFF" opacity="0.9"/>
+            <rect x="16" y="65" width="58" height="7" rx="3.5" fill="#FFFFFF" opacity="0.5"/>
+            <rect x="16" y="78" width="38" height="6" rx="3" fill="#FFFFFF" opacity="0.32"/>
+          </g>
+
+          <g transform="translate(190,152) rotate(9)" filter="url(#welcome-shadow)">
+            <rect width="150" height="94" rx="14" fill="var(--accent)"/>
+            <circle cx="22" cy="22" r="8" fill="#FFFFFF" opacity="0.95"/>
+            <rect x="16" y="65" width="64" height="7" rx="3.5" fill="#FFFFFF" opacity="0.55"/>
+            <rect x="16" y="78" width="40" height="6" rx="3" fill="#FFFFFF" opacity="0.35"/>
+          </g>
+
+          <g transform="translate(132,208) rotate(-2)" filter="url(#welcome-shadow)">
+            <rect width="164" height="102" rx="16" fill="var(--primary)"/>
+            <circle cx="24" cy="24" r="9" fill="#FFFFFF" opacity="0.95"/>
+            <rect x="18" y="70" width="70" height="8" rx="4" fill="#FFFFFF" opacity="0.65"/>
+            <rect x="18" y="84" width="46" height="6" rx="3" fill="#FFFFFF" opacity="0.4"/>
+          </g>
+
+          <g transform="translate(300,96)" filter="url(#welcome-shadow)">
+            <circle r="20" fill="#FFFFFF"/>
+            <circle r="20" fill="none" stroke="var(--accent)" stroke-width="2.5"/>
+            <text y="6" font-family="Arial, sans-serif" font-size="17" font-weight="700" fill="var(--accent)" text-anchor="middle">€</text>
+          </g>
+
+          <g transform="translate(78,120)" filter="url(#welcome-shadow)">
+            <circle r="17" fill="#FFFFFF"/>
+            <circle r="17" fill="none" stroke="var(--primary-dark)" stroke-width="2.25"/>
+            <g transform="translate(-7.44,-7.44) scale(0.62)" fill="none" stroke="var(--primary-dark)" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/>
+              <line x1="3" y1="6" x2="21" y2="6"/>
+              <path d="M16 10a4 4 0 01-8 0"/>
+            </g>
+          </g>
+        </g>
+      </svg>
+    </div>
+
+    <div class="welcome-content">
+      <h1 class="welcome-title"><span class="ink">Welcome to </span><span class="teal-deep">VoucherWise</span></h1>
+      <p class="welcome-desc">Unlock the full value of every voucher you own.</p>
+
+      <div class="welcome-actions">
+        <button type="button" class="btn btn-dark btn-full" data-nav="auth" data-tab="signup">Get started</button>
+        <div class="welcome-secondary">
+          Already have an account?
+          <button type="button" class="link-btn" data-nav="auth" data-tab="login">Log in</button>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+/* ============================================================
    VIEW: AUTH
    ============================================================ */
 function viewAuth() {
   const tab = state.params.tab || 'login';
   return `
   <div class="auth-screen">
+    <button type="button" class="btn-icon auth-back" data-nav="welcome">${icon.back}</button>
     <div class="auth-logo">
       <div class="logo-mark">
         <svg width="72" height="72" viewBox="0 0 72 72" fill="none">
@@ -2200,6 +2287,7 @@ function viewVerifyEmail() {
 }
 
 const VIEWS = {
+  welcome:          viewWelcome,
   auth:             viewAuth,
   'verify-email':   viewVerifyEmail,
   'forgot-password': viewForgotPassword,
@@ -2689,6 +2777,7 @@ async function init() {
     await fetchVouchers();
     await Promise.all([fetchBrands(), fetchListings(), fetchFriendIds(), fetchPendingRequests(), fetchReminders()]);
   } else {
+    state.view = isEmailConfirm ? 'auth' : 'welcome';
     state.params = { tab: 'login' };
   }
   render();

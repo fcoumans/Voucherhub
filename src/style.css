@@ -219,6 +219,13 @@ p { line-height: 1.5; }
   color: var(--text);
 }
 
+.btn-dark {
+  background: var(--dark);
+  color: white;
+}
+
+.btn-dark:hover { background: #0c1a30; }
+
 .btn-outline {
   background: transparent;
   color: var(--primary);
@@ -399,6 +406,7 @@ p { line-height: 1.5; }
    AUTH SCREEN
    ============================================================ */
 .auth-screen {
+  position: relative;
   min-height: 100dvh;
   display: flex;
   flex-direction: column;
@@ -407,6 +415,13 @@ p { line-height: 1.5; }
   max-width: 480px;
   margin: 0 auto;
   background: var(--bg);
+}
+
+.auth-back {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  color: var(--text-muted);
 }
 
 .auth-logo {
@@ -462,6 +477,105 @@ p { line-height: 1.5; }
 }
 
 .auth-form { width: 100%; }
+
+/* ============================================================
+   WELCOME SCREEN (onboarding splash)
+   ============================================================ */
+.welcome-screen {
+  min-height: 100dvh;
+  max-width: 480px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+}
+
+.welcome-hero {
+  position: relative;
+  width: 100%;
+  height: 55dvh;
+  min-height: 300px;
+  flex-shrink: 0;
+  overflow: hidden;
+  opacity: 0;
+  transform: translateY(-24px);
+  animation: welcomeHeroIn 0.9s cubic-bezier(0.22, 1, 0.36, 1) 0.15s forwards;
+}
+
+.welcome-hero svg { width: 100%; height: 100%; display: block; }
+
+.welcome-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 28px 28px 34px;
+  gap: 16px;
+}
+
+.welcome-title {
+  margin: 0;
+  max-width: 100%;
+  font-size: 1.6875rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  opacity: 0;
+  transform: translateY(16px);
+  animation: welcomeFadeUp 0.7s cubic-bezier(0.22, 1, 0.36, 1) 0.55s forwards;
+}
+
+.welcome-title .ink { color: var(--dark); }
+.welcome-title .teal-deep { color: var(--primary-dark); }
+
+.welcome-desc {
+  margin: 0;
+  font-size: 0.9375rem;
+  line-height: 1.55;
+  color: var(--text-muted);
+  max-width: 270px;
+  opacity: 0;
+  transform: translateY(16px);
+  animation: welcomeFadeUp 0.7s cubic-bezier(0.22, 1, 0.36, 1) 0.72s forwards;
+}
+
+.welcome-actions {
+  width: 100%;
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  opacity: 0;
+  transform: translateY(16px);
+  animation: welcomeFadeUp 0.7s cubic-bezier(0.22, 1, 0.36, 1) 1s forwards;
+}
+
+.welcome-secondary {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.875rem;
+  color: var(--text-muted);
+}
+
+.welcome-secondary .link-btn { font-size: inherit; }
+
+@keyframes welcomeHeroIn {
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes welcomeFadeUp {
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .welcome-hero, .welcome-title, .welcome-desc, .welcome-actions {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}
 
 /* ============================================================
    HOME SCREEN

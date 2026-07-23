@@ -93,8 +93,12 @@ const initial = (name) => (name || '?').charAt(0).toUpperCase();
 
 const formatCurrency = (amount, currency = 'EUR') => {
   const sym = { EUR: '€', USD: '$', GBP: '£', CHF: 'CHF ', SEK: 'kr', NOK: 'kr', DKK: 'kr' };
-  return (sym[currency] || currency + ' ') + parseFloat(amount || 0).toFixed(2);
+  const formatted = parseFloat(amount || 0).toLocaleString('nl-NL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return (sym[currency] || currency + ' ') + formatted;
 };
+
+// Native number inputs always require a period; this lets users type a comma (European style) instead.
+const normalizeAmount = (str) => String(str ?? '').trim().replace(',', '.');
 
 const getStatus = (v) => {
   if (v.status === 'used') return 'used';
@@ -1106,28 +1110,15 @@ function viewWelcome() {
             <rect x="18" y="70" width="70" height="8" rx="4" fill="#FFFFFF" opacity="0.65"/>
             <rect x="18" y="84" width="46" height="6" rx="3" fill="#FFFFFF" opacity="0.4"/>
           </g>
-
-          <g transform="translate(300,96)" filter="url(#welcome-shadow)">
-            <circle r="20" fill="#FFFFFF"/>
-            <circle r="20" fill="none" stroke="var(--accent)" stroke-width="2.5"/>
-            <text y="6" font-family="Arial, sans-serif" font-size="17" font-weight="700" fill="var(--accent)" text-anchor="middle">€</text>
-          </g>
-
-          <g transform="translate(78,120)" filter="url(#welcome-shadow)">
-            <circle r="17" fill="#FFFFFF"/>
-            <circle r="17" fill="none" stroke="var(--primary-dark)" stroke-width="2.25"/>
-            <g transform="translate(-7.44,-7.44) scale(0.62)" fill="none" stroke="var(--primary-dark)" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/>
-              <line x1="3" y1="6" x2="21" y2="6"/>
-              <path d="M16 10a4 4 0 01-8 0"/>
-            </g>
-          </g>
         </g>
       </svg>
     </div>
 
     <div class="welcome-content">
-      <h1 class="welcome-title"><span class="ink">Welcome to </span><span class="teal-deep">VoucherWise</span></h1>
+      <h1 class="welcome-title">
+        <span class="welcome-title-line">Welcome to</span>
+        <span class="welcome-title-brand"><span class="welcome-title-voucher">Voucher</span><span class="welcome-title-wise">Wise</span></span>
+      </h1>
       <p class="welcome-desc">Unlock the full value of every voucher you own.</p>
 
       <div class="welcome-actions">
@@ -1238,7 +1229,7 @@ function viewHome() {
       </div>
       <div class="stat-divider"></div>
       <div class="stat">
-        <span class="stat-value">€${total.toFixed(0)}</span>
+        <span class="stat-value">€${total.toLocaleString('nl-NL', { maximumFractionDigits: 0 })}</span>
         <span class="stat-label">Total Value</span>
       </div>
       <div class="stat-divider"></div>
@@ -1329,7 +1320,7 @@ function voucherCard(v) {
   const s = getStatus(v);
   const days = v.expiryDate ? daysUntil(v.expiryDate) : null;
   let expiryMeta = badge(s);
-  if (days !== null) {
+  if (s !== 'listed' && days !== null) {
     if (days < 0)        expiryMeta = `<span class="text-danger text-xs">Expired</span>`;
     else if (days === 0) expiryMeta = `<span class="text-warning text-xs">Today!</span>`;
     else if (days <= 7)  expiryMeta = `<span class="text-warning text-xs">${days}d left</span>`;
@@ -1344,6 +1335,7 @@ function voucherCard(v) {
     <div class="vc-info">
       <div class="vc-brand">${esc(v.brand)}</div>
       <div class="vc-code">${v.code ? '•••• ' + esc(v.code.slice(-4)) : '<span style="opacity:0.5">No code</span>'}</div>
+      ${s === 'listed' ? `<div class="vc-listed-hint">Tap to unlist</div>` : ''}
     </div>
     <div class="vc-right">
       <div class="vc-value">${formatCurrency(displayAmount, v.currency)}</div>
@@ -1357,8 +1349,7 @@ function viewVouchers() {
   const q      = state.searchQuery.toLowerCase();
   const filter = state.activeFilter;
   const sort   = state.activeSort;
-  // Listed vouchers are managed from Marketplace > My Listings, not here
-  let vouchers = state.vouchers.filter(v => getStatus(v) !== 'listed');
+  let vouchers = state.vouchers.slice();
 
   if (q) vouchers = vouchers.filter(v => v.brand.toLowerCase().includes(q) || (v.code||'').toLowerCase().includes(q));
   if (filter !== 'all') vouchers = vouchers.filter(v => {
@@ -1393,8 +1384,8 @@ function viewVouchers() {
     });
   }
 
-  const allV   = state.vouchers.filter(v => getStatus(v) !== 'listed');
-  const counts = { all: allV.length, active: 0, expiring: 0, expired: 0, used: 0 };
+  const allV   = state.vouchers;
+  const counts = { all: allV.length, active: 0, expiring: 0, expired: 0, used: 0, listed: 0 };
   allV.forEach(v => {
     const s = getStatus(v);
     if (s === 'active' || s === 'expiring') counts.active++;
@@ -1417,6 +1408,7 @@ function viewVouchers() {
           { id: 'expiring', label: `⚠ Expiring (${counts.expiring})` },
           { id: 'expired',  label: `Expired (${counts.expired})` },
           { id: 'used',     label: `Used (${counts.used})` },
+          { id: 'listed',   label: `Listed (${counts.listed})` },
         ].map(f => `<button class="chip ${filter === f.id ? 'active' : ''}" data-filter="${f.id}">${f.label}</button>`).join('')}
       </div>
       <select class="sort-select" data-sort title="Sort">
@@ -1460,12 +1452,12 @@ function viewVoucherForm() {
 
       <div class="form-group">
         <label>Value (€) <span style="color:var(--danger)">*</span></label>
-        <input type="number" name="amount" placeholder="50.00" value="${esc(v?.value||'')}" required min="0" step="0.01">
+        <input type="text" name="amount" placeholder="50,00" value="${esc(v?.value||'')}" required>
       </div>
 
       <div class="form-group">
         <label>Remaining Balance</label>
-        <input type="number" name="balance" placeholder="Leave blank if full value remains" value="${esc(v?.balance??'')}" min="0" step="0.01">
+        <input type="text" name="balance" placeholder="Leave blank if full value remains" value="${esc(v?.balance??'')}">
         <span class="form-hint">Fill in only when a partial amount has already been used</span>
       </div>
 
@@ -1637,7 +1629,7 @@ function viewVoucherDetail() {
         <input type="hidden" name="voucherId" value="${esc(id)}">
         <div class="form-group">
           <label>Amount spent (${v.currency||'EUR'}) <span style="color:var(--danger)">*</span></label>
-          <input type="number" name="amount" placeholder="e.g. 12.50" required min="0.01" step="0.01" autofocus>
+          <input type="text" name="amount" placeholder="e.g. 12,50" required autofocus>
           <span class="form-hint">Remaining: ${formatCurrency(v.balance ?? v.value, v.currency)}</span>
         </div>
         <div style="display:flex;gap:10px">
@@ -1686,7 +1678,7 @@ function viewVoucherDetail() {
         <input type="hidden" name="voucherId" value="${esc(id)}">
         <div class="form-group">
           <label>Selling Price (${v.currency||'EUR'}) <span style="color:var(--danger)">*</span></label>
-          <input type="number" name="price" placeholder="e.g. 40.00" required min="0.01" step="0.01">
+          <input type="text" name="price" placeholder="e.g. 40,00" required>
           <span class="form-hint">Original value: ${formatCurrency(v.value, v.currency)}</span>
         </div>
         <div style="display:flex;gap:10px">
@@ -1801,7 +1793,7 @@ function viewListingDetail() {
       </div>
       <div class="detail-item">
         <div class="detail-item-label">You Save</div>
-        <div class="detail-item-value text-success">€${(l.originalValue - l.sellingPrice).toFixed(2)}</div>
+        <div class="detail-item-value text-success">${formatCurrency(l.originalValue - l.sellingPrice, l.currency)}</div>
       </div>
       <div class="detail-item">
         <div class="detail-item-label">Expiry Date</div>
@@ -1899,9 +1891,11 @@ function viewReferrals() {
     pool = all.filter(r => r.userId === uid);
   }
 
-  const myCount      = all.filter(r => r.userId === uid).length;
-  const friendsCount = all.filter(r => friendIds.includes(r.userId) || (r.userId === uid && r.visibility === 'friends')).length;
-  const publicCount  = all.filter(r => r.visibility === 'public').length;
+  // Tab counts scope to the selected brand once you've drilled into one
+  const countPool    = brand ? all.filter(r => r.brand === brand) : all;
+  const myCount      = countPool.filter(r => r.userId === uid).length;
+  const friendsCount = countPool.filter(r => friendIds.includes(r.userId) || (r.userId === uid && r.visibility === 'friends')).length;
+  const publicCount  = countPool.filter(r => r.visibility === 'public').length;
 
   const tabs = `
   <div class="inline-tabs" style="margin-bottom:12px">
@@ -2163,7 +2157,7 @@ function viewProfile() {
         <div class="ps-label">Sold</div>
       </div>
       <div class="ps-item">
-        <div class="ps-value">€${totalSaved.toFixed(0)}</div>
+        <div class="ps-value">€${totalSaved.toLocaleString('nl-NL', { maximumFractionDigits: 0 })}</div>
         <div class="ps-label">Wallet</div>
       </div>
     </div>
@@ -2231,6 +2225,33 @@ function showConfirm({ title, message, confirmLabel, confirmClass = 'btn-danger'
 }
 
 /* ============================================================
+   VIEW: RESET PASSWORD (from recovery email link)
+   ============================================================ */
+function viewResetPassword() {
+  return `
+  <div class="auth-screen">
+    <div class="auth-logo">
+      <div class="logo-mark">
+        <svg width="72" height="72" viewBox="0 0 72 72" fill="none">
+          <rect width="72" height="72" rx="18" fill="#13B5A2"/>
+          <rect x="11" y="8" width="50" height="30" rx="9" fill="#2BD4BE" opacity="0.6"/>
+          <rect x="6" y="26" width="60" height="38" rx="11" fill="white"/>
+          <rect x="38" y="35" width="22" height="14" rx="7" fill="#11233F"/>
+        </svg>
+      </div>
+      <h1>Set New Password</h1>
+      <p>Choose a new password for your account.</p>
+    </div>
+    <form id="form-reset-password" class="auth-form">
+      <div id="reset-error" class="error-msg" style="display:none"></div>
+      ${pwField('reset-password', 'password', 'New Password', 'Min. 6 characters', 'new-password')}
+      ${pwField('reset-password-confirm', 'passwordConfirm', 'Confirm Password', 'Re-enter password', 'new-password')}
+      <button type="submit" class="btn btn-primary btn-full">Update Password</button>
+    </form>
+  </div>`;
+}
+
+/* ============================================================
    MAIN RENDER
    ============================================================ */
 function viewForgotPassword() {
@@ -2291,6 +2312,7 @@ const VIEWS = {
   auth:             viewAuth,
   'verify-email':   viewVerifyEmail,
   'forgot-password': viewForgotPassword,
+  'reset-password':  viewResetPassword,
   home:             viewHome,
   vouchers:         viewVouchers,
   'voucher-form':   viewVoucherForm,
@@ -2666,14 +2688,46 @@ async function handleSubmit(e) {
     return;
   }
 
+  if (form.id === 'form-reset-password') {
+    const d = formData(form);
+    const btn = form.querySelector('[type=submit]');
+    const errEl = document.getElementById('reset-error');
+    if (d.password.length < 6) { if (errEl) { errEl.textContent = 'Password must be at least 6 characters.'; errEl.style.display = ''; } return; }
+    if (d.password !== d.passwordConfirm) { if (errEl) { errEl.textContent = 'Passwords do not match.'; errEl.style.display = ''; } return; }
+    if (errEl) errEl.style.display = 'none';
+    if (btn) { btn.disabled = true; btn.textContent = 'Updating…'; }
+    const { error } = await supabase.auth.updateUser({ password: d.password });
+    if (error) {
+      if (errEl) { errEl.textContent = error.message; errEl.style.display = ''; }
+      if (btn) { btn.disabled = false; btn.textContent = 'Update Password'; }
+      return;
+    }
+    showToast('Password updated');
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session) {
+      state.currentUser = mapUser(session.user);
+      state.view = 'home';
+      await fetchVouchers();
+      await Promise.all([fetchBrands(), fetchListings(), fetchFriendIds(), fetchPendingRequests(), fetchReminders()]);
+      render();
+    } else {
+      go('auth');
+    }
+    return;
+  }
+
   if (form.id === 'form-voucher') {
     const d = formData(form);
+    const amount  = normalizeAmount(d.amount);
+    const balance = d.balance !== '' ? normalizeAmount(d.balance) : null;
+    if (!amount || isNaN(parseFloat(amount)) || parseFloat(amount) <= 0) { showToast('Enter a valid amount'); return; }
+    if (balance !== null && (isNaN(parseFloat(balance)) || parseFloat(balance) < 0)) { showToast('Enter a valid balance'); return; }
     const btn = form.querySelector('[type=submit]');
     if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
     const data = {
       brand:       d.brand.trim(),
-      value:       d.amount,
-      balance:     d.balance !== '' ? d.balance : null,
+      value:       amount,
+      balance:     balance,
       expiryDate:  d.expiryDate || null,
       code:        d.code.trim(),
       pin:         d.pin.trim(),
@@ -2694,7 +2748,7 @@ async function handleSubmit(e) {
 
   if (form.id === 'form-sell') {
     const d = formData(form);
-    const price = parseFloat(d.price);
+    const price = parseFloat(normalizeAmount(d.price));
     if (!price || price <= 0) return;
     listForSale(d.voucherId, price);
     return;
@@ -2703,7 +2757,7 @@ async function handleSubmit(e) {
   if (form.id === 'form-deduct') {
     const d = formData(form);
     if (!d.amount) return;
-    await deductBalance(d.voucherId, d.amount);
+    await deductBalance(d.voucherId, normalizeAmount(d.amount));
     return;
   }
 
@@ -2767,28 +2821,48 @@ async function init() {
   const urlHash   = new URLSearchParams(window.location.hash.replace('#', '?'));
   const confirmType = urlSearch.get('type') || urlHash.get('type');
   const isEmailConfirm = confirmType === 'email' || confirmType === 'signup';
-  if (isEmailConfirm) window.history.replaceState(null, '', '/');
+  const isRecovery    = confirmType === 'recovery';
+  const authError     = urlHash.get('error') || urlSearch.get('error');
+  const authErrorDesc = urlHash.get('error_description') || urlSearch.get('error_description');
+  if (isEmailConfirm || isRecovery || authError) window.history.replaceState(null, '', '/');
 
   const { data: { session } } = await supabase.auth.getSession();
-  if (session) {
+  if (isRecovery && session) {
+    // Recovery link established a session — show the reset form, not Home
+    state.view = 'reset-password';
+  } else if (session) {
     state.currentUser = mapUser(session.user);
     state.view = 'home';
     // vouchers first so mapReminder can look up brand names
     await fetchVouchers();
     await Promise.all([fetchBrands(), fetchListings(), fetchFriendIds(), fetchPendingRequests(), fetchReminders()]);
+  } else if (authError) {
+    state.view = 'forgot-password';
   } else {
     state.view = isEmailConfirm ? 'auth' : 'welcome';
     state.params = { tab: 'login' };
   }
   render();
 
+  if (authError) {
+    const msg = authErrorDesc
+      ? authErrorDesc.replace(/\+/g, ' ')
+      : 'This link is invalid or has expired. Please request a new one.';
+    setTimeout(() => showToast(msg), 300);
+  }
+
   if (isEmailConfirm && session) {
     setTimeout(() => showToast('Email confirmed — welcome to VoucherWise!'), 300);
   }
 
-  // Handle email confirmation link — user clicks link in email, session fires here
+  // Handle email confirmation / password-recovery links — session fires here if not already caught above
   supabase.auth.onAuthStateChange(async (event, session) => {
-    if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session && !state.currentUser) {
+    if (event === 'PASSWORD_RECOVERY') {
+      state.view = 'reset-password';
+      render();
+      return;
+    }
+    if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session && !state.currentUser && state.view !== 'reset-password') {
       state.currentUser = mapUser(session.user);
       state.view = 'home';
       await fetchVouchers();

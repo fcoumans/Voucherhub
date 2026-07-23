@@ -1193,18 +1193,12 @@ function viewAuth() {
    VIEW: HOME
    ============================================================ */
 function viewHome() {
-  const uid = state.currentUser.id;
   const vouchers  = state.vouchers;
   const expiring  = vouchers.filter(v => getStatus(v) === 'expiring');
   const active    = vouchers.filter(v => getStatus(v) === 'active');
   const total     = [...active, ...expiring].reduce((s, v) => s + parseFloat((v.balance ?? v.value) || 0), 0);
   const hour      = new Date().getHours();
   const greeting  = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
-
-  const friendIds     = state.friendIds;
-  const allListings   = state.listings;
-  const friendListings = allListings.filter(l => l.sellerId !== uid && friendIds.includes(l.sellerId));
-  const publicListings = allListings.filter(l => l.sellerId !== uid && !friendIds.includes(l.sellerId)).slice(0, 4);
 
   return `
   ${renderHeader('VoucherWise')}
@@ -1290,23 +1284,6 @@ function viewHome() {
         <p style="color:var(--text-muted);font-size:0.875rem;margin-bottom:16px">Add your first voucher to start managing your wallet</p>
         <button class="btn btn-primary" data-nav="voucher-form">Add Voucher</button>
       </div>
-    </section>
-    ` : ''}
-
-    ${(friendListings.length + publicListings.length) > 0 ? `
-    <section class="home-section">
-      <div class="section-header">
-        <h3 class="section-title">Community Feed</h3>
-        <button class="link-btn" data-nav="marketplace">See all</button>
-      </div>
-      ${friendListings.length > 0 ? `
-        <p class="text-xs text-muted" style="margin-bottom:8px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em">Friends</p>
-        ${friendListings.map(l => listingCard(l)).join('')}
-      ` : ''}
-      ${publicListings.length > 0 ? `
-        ${friendListings.length > 0 ? '<p class="text-xs text-muted" style="margin:12px 0 8px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em">Public</p>' : ''}
-        ${publicListings.map(l => listingCard(l)).join('')}
-      ` : ''}
     </section>
     ` : ''}
   </main>

@@ -218,6 +218,7 @@ function mapReferral(row) {
     link:            row.referral_link || '',
     benefitNew:      row.benefit_for_new_user || '',
     benefitReferrer: row.benefit_for_referrer || '',
+    terms:           row.terms || '',
     visibility:      row.visibility || 'public',
     expirationDate:  row.expiration_date || null,
     category:        row.category || resolvedBrand?.category || 'Other',
@@ -670,6 +671,7 @@ async function saveReferral(data) {
     referral_link:        data.link || null,
     benefit_for_new_user: data.benefitNew || null,
     benefit_for_referrer: data.benefitReferrer || null,
+    terms:                data.terms || null,
     visibility:           data.visibility || 'public',
     expiration_date:      data.expirationDate || null,
   });
@@ -691,6 +693,7 @@ async function updateReferral(id, data) {
       referral_link:        data.link || null,
       benefit_for_new_user: data.benefitNew || null,
       benefit_for_referrer: data.benefitReferrer || null,
+      terms:                data.terms || null,
       visibility:           data.visibility || 'public',
       expiration_date:      data.expirationDate || null,
     })
@@ -1587,7 +1590,7 @@ function viewVoucherDetail() {
       }
       ${s === 'listed'
         ? `<button class="btn btn-ghost" data-action="unlist" data-id="${esc(id)}">${icon.tag} Remove Listing</button>`
-        : (s === 'active' || s === 'expiring') && v.voucherType !== 'store_credit'
+        : (s === 'active' || s === 'expiring')
           ? `<button class="btn btn-secondary" data-action="show-sell" data-id="${esc(id)}">${icon.tag} Sell</button>`
           : ''
       }
@@ -1845,6 +1848,7 @@ function referralCard(r, isOwn = false) {
       </div>
       `}
     </div>
+    <div class="rc-terms"><strong>Terms &amp; Conditions:</strong> ${r.terms ? esc(r.terms) : 'No terms specified'}</div>
   </div>`;
 }
 
@@ -2003,6 +2007,10 @@ function viewReferralForm() {
       <div class="form-group">
         <label>Benefit for You (Referrer)</label>
         <input type="text" name="benefitReferrer" placeholder="e.g. €5 for each signup" value="${esc(r?.benefitReferrer||'')}">
+      </div>
+      <div class="form-group">
+        <label>Terms &amp; Conditions</label>
+        <textarea name="terms" placeholder="e.g. New customers only, one code per household, valid 30 days">${esc(r?.terms||'')}</textarea>
       </div>
       <div class="form-group">
         <label>Who can see this?</label>
@@ -2759,6 +2767,7 @@ async function handleSubmit(e) {
       link:            (d.link || '').trim(),
       benefitNew:      (d.benefitNew || '').trim(),
       benefitReferrer: (d.benefitReferrer || '').trim(),
+      terms:           (d.terms || '').trim(),
       visibility:      d.visibility,
       expirationDate:  d.expirationDate || null,
     };

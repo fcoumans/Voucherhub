@@ -144,6 +144,7 @@ ALTER TABLE public.referral_codes ADD COLUMN IF NOT EXISTS referral_link        
 ALTER TABLE public.referral_codes ADD COLUMN IF NOT EXISTS benefit_for_new_user TEXT;
 ALTER TABLE public.referral_codes ADD COLUMN IF NOT EXISTS benefit_for_referrer TEXT;
 ALTER TABLE public.referral_codes ADD COLUMN IF NOT EXISTS expiration_date      DATE;
+ALTER TABLE public.referral_codes ADD COLUMN IF NOT EXISTS terms                TEXT;
 
 -- Backfill brand_id from brands table where name matches
 UPDATE public.referral_codes rc

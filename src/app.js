@@ -694,98 +694,204 @@ function loadImageElement(url) {
   });
 }
 
-// Scans a photo for a QR code or 1D barcode and, if found, crops just that
-// region out (with a small margin) so it can be displayed large enough to
-// scan directly off the screen. Returns null if no photo, PDF, or no code
-// found — this is best-effort, not every voucher photo has one.
-// Runs one decode attempt against a given (possibly rotated) canvas source
-// and, on success, returns the crop region in the ORIGINAL image's
-// coordinate space (undoing the rotation) so the final crop is always taken
-// from the full-resolution source image, not the smaller rotated canvas.
-function decodeAndLocate(reader, source, rotationDeg, imgW, imgH) {
-  let result;
-  try {
-    result = reader.decodeFromCanvas(source);
-  } catch {
-    return null;
+// Maps a point from a rotated canvas's pixel space back to the ORIGINAL
+// (unrotated) image's coordinate space, so crops always come from the
+// full-resolution source image regardless of which rotation decoded it.
+function mapRotatedPoint(x, y, rotationDeg, imgW, imgH) {
+  switch (rotationDeg) {
+    case 90:  return { x: y,        y: imgH - x };
+    case 180: return { x: imgW - x, y: imgH - y };
+    case 270: return { x: imgW - y, y: x };
+    default:  return { x, y };
   }
-  const points = (result.getResultPoints?.() || []).filter(Boolean);
-  if (!points.length) return null;
-  const toOriginal = (x, y) => {
-    switch (rotationDeg) {
-      case 90:  return { x: y,               y: imgH - x };
-      case 180: return { x: imgW - x,        y: imgH - y };
-      case 270: return { x: imgW - y,        y: x };
-      default:  return { x, y };
-    }
-  };
-  const mapped = points.map(p => toOriginal(p.getX(), p.getY()));
-  return mapped;
 }
 
-async function detectBarcodeCrop(file, mimeType) {
-  if (fileKind(mimeType) !== 'image') return null;
+// Voucher photos routinely have more than one code on them — the actual
+// redemption barcode plus unrelated marketing QR codes ("subscribe to our
+// newsletter", social links, etc.). zxing's single-shot decode just returns
+// whichever one it happens to find first, which is often the wrong one. This
+// scans every rotation, and after each hit, paints over that code and keeps
+// decoding the same frame so multiple distinct codes on one photo are all
+// found rather than just the first.
+// Repeatedly decodes `canvas`, masking out each found code so the next
+// attempt finds a different one, up to maxAttempts. Result points are in
+// the canvas's own pixel space; offsetX/offsetY/rotationDeg map them back
+// into the ORIGINAL full-resolution image's coordinate space before being
+// added to `candidates` (deduped against `seenTexts` by decoded text).
+function scanCanvasForCodes(reader, canvas, { rotationDeg = 0, offsetX = 0, offsetY = 0, imgW, imgH, maxAttempts, TWO_D_FORMATS, candidates, seenTexts }) {
+  const ctx = canvas.getContext('2d');
+  for (let i = 0; i < maxAttempts; i++) {
+    let result;
+    try {
+      result = reader.decodeFromCanvas(canvas);
+    } catch {
+      return; // no (more) codes found in this canvas
+    }
+    const points = (result.getResultPoints?.() || []).filter(Boolean);
+    if (!points.length) return;
+    const cxs = points.map(p => p.getX());
+    const cys = points.map(p => p.getY());
+
+    const text = result.getText?.() || '';
+    if (!seenTexts.has(text)) {
+      seenTexts.add(text);
+      // rotationDeg only applies to the whole-image pass (tiles are never
+      // rotated), so map rotation first, then add the tile's own offset.
+      const mapped = points.map(p => mapRotatedPoint(p.getX(), p.getY(), rotationDeg, imgW, imgH));
+      const mxs = mapped.map(p => p.x + offsetX), mys = mapped.map(p => p.y + offsetY);
+      candidates.push({
+        text,
+        is2D: TWO_D_FORMATS.has(result.getBarcodeFormat?.()),
+        x0: Math.min(...mxs), y0: Math.min(...mys),
+        x1: Math.max(...mxs), y1: Math.max(...mys),
+      });
+    }
+
+    // Mask this code out (in the canvas's own pixel space) so the next
+    // decode attempt on the same frame is forced to find a different one.
+    const mx0 = Math.max(0, Math.min(...cxs) - 6), my0 = Math.max(0, Math.min(...cys) - 6);
+    const mx1 = Math.min(canvas.width, Math.max(...cxs) + 6), my1 = Math.min(canvas.height, Math.max(...cys) + 6);
+    ctx.fillStyle = '#808080';
+    ctx.fillRect(mx0, my0, mx1 - mx0, my1 - my0);
+  }
+}
+
+// Splits baseCanvas into a grid of overlapping tiles and scans each one
+// independently, so a tile's own (smaller) dimensions give the decoder a
+// better shot at whatever region of the photo falls inside it.
+function runTiledScan(reader, baseCanvas, imgW, imgH, { grid, overlap, maxAttempts }, scanOpts) {
+  const stepX = imgW / grid, stepY = imgH / grid;
+  const tileW = Math.min(imgW, stepX * (1 + overlap));
+  const tileH = Math.min(imgH, stepY * (1 + overlap));
+  for (let ty = 0; ty < grid; ty++) {
+    for (let tx = 0; tx < grid; tx++) {
+      const x0 = Math.max(0, Math.min(imgW - tileW, tx * stepX - (tileW - stepX) / 2));
+      const y0 = Math.max(0, Math.min(imgH - tileH, ty * stepY - (tileH - stepY) / 2));
+      const w = Math.min(imgW - x0, tileW), h = Math.min(imgH - y0, tileH);
+      if (w < 60 || h < 60) continue;
+      const tileCanvas = document.createElement('canvas');
+      tileCanvas.width = w;
+      tileCanvas.height = h;
+      tileCanvas.getContext('2d').drawImage(baseCanvas, x0, y0, w, h, 0, 0, w, h);
+      scanCanvasForCodes(reader, tileCanvas, { ...scanOpts, offsetX: x0, offsetY: y0, maxAttempts });
+    }
+  }
+}
+
+async function findBarcodeCandidates(file, mimeType) {
+  if (fileKind(mimeType) !== 'image') return { img: null, imgW: 0, imgH: 0, candidates: [] };
   const objectUrl = URL.createObjectURL(file);
   try {
     const { BrowserMultiFormatReader } = await import('@zxing/browser');
-    const { DecodeHintType } = await import('@zxing/library');
+    const { DecodeHintType, BarcodeFormat } = await import('@zxing/library');
     const img = await loadImageElement(objectUrl);
     const imgW = img.naturalWidth, imgH = img.naturalHeight;
+    const TWO_D_FORMATS = new Set([
+      BarcodeFormat.QR_CODE, BarcodeFormat.MICRO_QR_CODE,
+      BarcodeFormat.DATA_MATRIX, BarcodeFormat.AZTEC, BarcodeFormat.PDF_417, BarcodeFormat.MAXICODE,
+    ]);
 
     const hints = new Map();
     hints.set(DecodeHintType.TRY_HARDER, true);
     hints.set(DecodeHintType.ALSO_INVERTED, true);
     const reader = new BrowserMultiFormatReader(hints);
 
-    // Real phone photos are far less forgiving than a clean screenshot: a
-    // barcode photographed in portrait orientation (very common for a
-    // horizontal barcode on a card held upright) won't decode from the
-    // unrotated image at all, so try a few rotations before giving up.
     const baseCanvas = document.createElement('canvas');
     baseCanvas.width = imgW;
     baseCanvas.height = imgH;
     baseCanvas.getContext('2d').drawImage(img, 0, 0);
 
-    let mapped = null;
+    const candidates = [];
+    const seenTexts = new Set();
+    const scanOpts = { imgW, imgH, TWO_D_FORMATS, candidates, seenTexts };
+
+    // Pass 1 — whole image, a few rotations. Cheap, and reliably finds QR/2D
+    // codes anywhere (they use a global finder-pattern search) plus any 1D
+    // barcode that's large/centered enough to fall on a sampled scan row.
     for (const rotationDeg of [0, 90, 270, 180]) {
       const canvas = document.createElement('canvas');
-      if (rotationDeg === 90 || rotationDeg === 270) {
-        canvas.width = imgH;
-        canvas.height = imgW;
-      } else {
-        canvas.width = imgW;
-        canvas.height = imgH;
-      }
+      const rotated = rotationDeg === 90 || rotationDeg === 270;
+      canvas.width  = rotated ? imgH : imgW;
+      canvas.height = rotated ? imgW : imgH;
       const ctx = canvas.getContext('2d');
       ctx.translate(canvas.width / 2, canvas.height / 2);
       ctx.rotate((rotationDeg * Math.PI) / 180);
       ctx.drawImage(baseCanvas, -imgW / 2, -imgH / 2);
-      mapped = decodeAndLocate(reader, canvas, rotationDeg, imgW, imgH);
-      if (mapped) break;
+      ctx.setTransform(1, 0, 0, 1, 0, 0); // reset for scanCanvasForCodes' mask fillRects
+      scanCanvasForCodes(reader, canvas, { ...scanOpts, rotationDeg, maxAttempts: 4 });
     }
-    if (!mapped) return null;
 
-    const xs = mapped.map(p => p.x);
-    const ys = mapped.map(p => p.y);
-    const pad = Math.max(imgW, imgH) * 0.08;
-    const x0 = Math.max(0, Math.min(...xs) - pad);
-    const y0 = Math.max(0, Math.min(...ys) - pad);
-    const x1 = Math.min(imgW, Math.max(...xs) + pad);
-    const y1 = Math.min(imgH, Math.max(...ys) + pad);
-    const w = x1 - x0, h = y1 - y0;
-    if (w < 20 || h < 20) return null;
-    const canvas = document.createElement('canvas');
-    canvas.width = w;
-    canvas.height = h;
-    canvas.getContext('2d').drawImage(img, x0, y0, w, h, 0, 0, w, h);
-    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
-    return blob ? { blob, previewUrl: URL.createObjectURL(blob) } : null;
+    // Pass 2 — tiled, at two scales. zxing's 1D-barcode decoder only samples
+    // a handful of scan lines near the canvas's own center — even a
+    // byte-identical, perfectly clean barcode can fail to decode purely
+    // because of the overall canvas size/position it's scanned at, and
+    // succeed at a different crop of the exact same pixels. There's no
+    // single tile size that reliably works, so this tries a coarse grid
+    // (for a barcode spanning a large fraction of the photo) and a finer
+    // grid (for a small, localized one), both generously overlapped so a
+    // barcode is never split across a tile boundary.
+    runTiledScan(reader, baseCanvas, imgW, imgH, { grid: 2, overlap: 0.55, maxAttempts: 3 }, scanOpts);
+    runTiledScan(reader, baseCanvas, imgW, imgH, { grid: 4, overlap: 0.3, maxAttempts: 2 }, scanOpts);
+
+    return { img, imgW, imgH, candidates };
   } catch (err) {
-    console.error('detectBarcodeCrop error:', err);
-    return null;
+    console.error('findBarcodeCandidates error:', err);
+    return { img: null, imgW: 0, imgH: 0, candidates: [] };
   } finally {
     URL.revokeObjectURL(objectUrl);
   }
+}
+
+function normalizeCodeForCompare(s) {
+  return (s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+}
+
+// Picks the most likely "this is the actual redemption code" candidate:
+// 1. Its decoded text matches the code the AI extraction already read off
+//    the same photo — the strongest possible signal when available.
+// 2. Otherwise prefer a 1D barcode over a QR/2D code — gift-card codes are
+//    almost always linear barcodes, while QR codes on a voucher are
+//    typically unrelated marketing (newsletter, social links, app store).
+// 3. Otherwise the largest code in the photo (marketing codes are usually
+//    smaller/secondary on the layout).
+function pickBestBarcodeCandidate(candidates, referenceCode) {
+  if (!candidates.length) return null;
+  const normRef = normalizeCodeForCompare(referenceCode);
+  if (normRef) {
+    const match = candidates.find(c => {
+      const normText = normalizeCodeForCompare(c.text);
+      return normText.length >= 4 && (normText === normRef || normText.includes(normRef) || normRef.includes(normText));
+    });
+    if (match) return match;
+  }
+  const oneD = candidates.filter(c => !c.is2D);
+  const pool = oneD.length ? oneD : candidates;
+  return pool.slice().sort((a, b) => ((b.x1 - b.x0) * (b.y1 - b.y0)) - ((a.x1 - a.x0) * (a.y1 - a.y0)))[0];
+}
+
+async function cropBarcodeCandidate(img, imgW, imgH, candidate) {
+  const pad = Math.max(imgW, imgH) * 0.08;
+  const x0 = Math.max(0, candidate.x0 - pad);
+  const y0 = Math.max(0, candidate.y0 - pad);
+  const x1 = Math.min(imgW, candidate.x1 + pad);
+  const y1 = Math.min(imgH, candidate.y1 + pad);
+  const w = x1 - x0, h = y1 - y0;
+  if (w < 20 || h < 20) return null;
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  canvas.getContext('2d').drawImage(img, x0, y0, w, h, 0, 0, w, h);
+  const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+  return blob ? { blob, previewUrl: URL.createObjectURL(blob) } : null;
+}
+
+// Convenience wrapper for call sites that don't have a reference code to
+// disambiguate multiple candidates with (see pickBestBarcodeCandidate).
+async function detectBarcodeCrop(file, mimeType, referenceCode = null) {
+  const { img, imgW, imgH, candidates } = await findBarcodeCandidates(file, mimeType);
+  const best = pickBestBarcodeCandidate(candidates, referenceCode);
+  if (!best || !img) return null;
+  return cropBarcodeCandidate(img, imgW, imgH, best);
 }
 
 // Only auto-fills the barcode slot if it's currently empty, mirroring the
@@ -807,7 +913,8 @@ async function maybeAutoDetectBarcode(file, mimeType, existingBarcodePath) {
   barcodeScanState = 'scanning';
   renderBarcodeGroupNow(state.vouchers.find(x => x.id === state.params.id));
 
-  const found = await detectBarcodeCrop(file, mimeType);
+  const referenceCode = document.querySelector('#form-voucher [name="code"]')?.value || null;
+  const found = await detectBarcodeCrop(file, mimeType, referenceCode);
   if (pendingBarcode || barcodeRemoved) return; // state changed while awaiting (e.g. user removed manually)
 
   barcodeScanState = found ? null : 'missing';
@@ -926,14 +1033,20 @@ async function startVoucherScan(file, mimeType) {
 
   screen.querySelector('#scan-skip-btn').addEventListener('click', () => finish(null, null, { silent: true }));
 
-  const [extractionOutcome, barcodeOutcome] = await Promise.allSettled([
+  const emptyCandidates = { img: null, imgW: 0, imgH: 0, candidates: [] };
+  const [extractionOutcome, candidatesOutcome] = await Promise.allSettled([
     Promise.race([extractVoucherFields(file, mimeType), new Promise(resolve => setTimeout(() => resolve(null), 25000))]),
-    Promise.race([detectBarcodeCrop(file, mimeType), new Promise(resolve => setTimeout(() => resolve(null), 25000))]),
+    Promise.race([findBarcodeCandidates(file, mimeType), new Promise(resolve => setTimeout(() => resolve(emptyCandidates), 25000))]),
   ]);
-  finish(
-    extractionOutcome.status === 'fulfilled' ? extractionOutcome.value : null,
-    barcodeOutcome.status === 'fulfilled' ? barcodeOutcome.value : null,
-  );
+  const fields = extractionOutcome.status === 'fulfilled' ? extractionOutcome.value : null;
+  const { img, imgW, imgH, candidates } = candidatesOutcome.status === 'fulfilled' ? candidatesOutcome.value : emptyCandidates;
+
+  // Now that extraction is done too, use its code field (if any) to pick
+  // the right candidate when the photo has more than one code on it.
+  const best = pickBestBarcodeCandidate(candidates, fields?.code);
+  const barcode = best && img ? await cropBarcodeCandidate(img, imgW, imgH, best) : null;
+
+  finish(fields, barcode);
 }
 
 /* ============================================================

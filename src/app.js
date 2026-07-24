@@ -697,28 +697,80 @@ function loadImageElement(url) {
 // region out (with a small margin) so it can be displayed large enough to
 // scan directly off the screen. Returns null if no photo, PDF, or no code
 // found — this is best-effort, not every voucher photo has one.
+// Runs one decode attempt against a given (possibly rotated) canvas source
+// and, on success, returns the crop region in the ORIGINAL image's
+// coordinate space (undoing the rotation) so the final crop is always taken
+// from the full-resolution source image, not the smaller rotated canvas.
+function decodeAndLocate(reader, source, rotationDeg, imgW, imgH) {
+  let result;
+  try {
+    result = reader.decodeFromCanvas(source);
+  } catch {
+    return null;
+  }
+  const points = (result.getResultPoints?.() || []).filter(Boolean);
+  if (!points.length) return null;
+  const toOriginal = (x, y) => {
+    switch (rotationDeg) {
+      case 90:  return { x: y,               y: imgH - x };
+      case 180: return { x: imgW - x,        y: imgH - y };
+      case 270: return { x: imgW - y,        y: x };
+      default:  return { x, y };
+    }
+  };
+  const mapped = points.map(p => toOriginal(p.getX(), p.getY()));
+  return mapped;
+}
+
 async function detectBarcodeCrop(file, mimeType) {
   if (fileKind(mimeType) !== 'image') return null;
   const objectUrl = URL.createObjectURL(file);
   try {
     const { BrowserMultiFormatReader } = await import('@zxing/browser');
+    const { DecodeHintType } = await import('@zxing/library');
     const img = await loadImageElement(objectUrl);
-    const reader = new BrowserMultiFormatReader();
-    let result;
-    try {
-      result = await reader.decodeFromImageElement(img);
-    } catch {
-      return null; // no barcode/QR found in this image
+    const imgW = img.naturalWidth, imgH = img.naturalHeight;
+
+    const hints = new Map();
+    hints.set(DecodeHintType.TRY_HARDER, true);
+    hints.set(DecodeHintType.ALSO_INVERTED, true);
+    const reader = new BrowserMultiFormatReader(hints);
+
+    // Real phone photos are far less forgiving than a clean screenshot: a
+    // barcode photographed in portrait orientation (very common for a
+    // horizontal barcode on a card held upright) won't decode from the
+    // unrotated image at all, so try a few rotations before giving up.
+    const baseCanvas = document.createElement('canvas');
+    baseCanvas.width = imgW;
+    baseCanvas.height = imgH;
+    baseCanvas.getContext('2d').drawImage(img, 0, 0);
+
+    let mapped = null;
+    for (const rotationDeg of [0, 90, 270, 180]) {
+      const canvas = document.createElement('canvas');
+      if (rotationDeg === 90 || rotationDeg === 270) {
+        canvas.width = imgH;
+        canvas.height = imgW;
+      } else {
+        canvas.width = imgW;
+        canvas.height = imgH;
+      }
+      const ctx = canvas.getContext('2d');
+      ctx.translate(canvas.width / 2, canvas.height / 2);
+      ctx.rotate((rotationDeg * Math.PI) / 180);
+      ctx.drawImage(baseCanvas, -imgW / 2, -imgH / 2);
+      mapped = decodeAndLocate(reader, canvas, rotationDeg, imgW, imgH);
+      if (mapped) break;
     }
-    const points = (result.getResultPoints?.() || []).filter(Boolean);
-    if (!points.length) return null;
-    const xs = points.map(p => p.getX());
-    const ys = points.map(p => p.getY());
-    const pad = Math.max(img.naturalWidth, img.naturalHeight) * 0.08;
+    if (!mapped) return null;
+
+    const xs = mapped.map(p => p.x);
+    const ys = mapped.map(p => p.y);
+    const pad = Math.max(imgW, imgH) * 0.08;
     const x0 = Math.max(0, Math.min(...xs) - pad);
     const y0 = Math.max(0, Math.min(...ys) - pad);
-    const x1 = Math.min(img.naturalWidth, Math.max(...xs) + pad);
-    const y1 = Math.min(img.naturalHeight, Math.max(...ys) + pad);
+    const x1 = Math.min(imgW, Math.max(...xs) + pad);
+    const y1 = Math.min(imgH, Math.max(...ys) + pad);
     const w = x1 - x0, h = y1 - y0;
     if (w < 20 || h < 20) return null;
     const canvas = document.createElement('canvas');
@@ -849,9 +901,13 @@ async function startVoucherScan(file, mimeType) {
     pendingBarcode           = barcode;
     go('voucher-form').then(() => {
       if (silent) return;
-      showToast(fields
-        ? 'Auto-filled from your photo — please check the details before saving.'
-        : 'Could not auto-read this file — please fill in manually.');
+      if (!fields) {
+        showToast('Could not auto-read this file — please fill in manually.');
+      } else if (!barcode) {
+        showToast('Auto-filled — no scannable barcode or QR code found in this photo.');
+      } else {
+        showToast('Auto-filled from your photo — please check the details before saving.');
+      }
     });
   };
 

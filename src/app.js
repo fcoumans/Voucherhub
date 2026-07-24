@@ -156,6 +156,7 @@ function mapVoucher(row) {
     copyCount:   row.copy_count || 0,
     createdAt:   row.created_at,
     voucherType: row.voucher_type || 'gift_card',
+    photoPath:   row.photo_url || null,
   };
 }
 
@@ -174,6 +175,7 @@ function voucherToDb(v) {
     status:          v.listed ? 'listed' : (v.status || 'active'),
     copy_count:      v.copyCount || 0,
     voucher_type:    v.voucherType || 'gift_card',
+    photo_url:       v.photoPath !== undefined ? v.photoPath : null,
   };
 }
 
@@ -501,6 +503,8 @@ async function go(view, params = {}) {
       await Promise.all([fetchVouchers(), fetchReminders()]);
       break;
     case 'voucher-form':
+      pendingPhotoFile    = null;
+      pendingPhotoRemoved = false;
       await Promise.all([fetchVouchers(), fetchBrands()]);
       break;
     case 'marketplace':
@@ -578,6 +582,38 @@ async function logout() {
 }
 
 /* ============================================================
+   VOUCHER PHOTO STORAGE
+   ============================================================ */
+const PHOTO_BUCKET = 'voucher-photos';
+const signedPhotoUrlCache = new Map(); // path -> { url, expiresAt }
+
+async function uploadVoucherPhoto(file) {
+  const ext = (file.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
+  const path = `${state.currentUser.id}/${crypto.randomUUID()}.${ext}`;
+  const { error } = await supabase.storage.from(PHOTO_BUCKET).upload(path, file, { contentType: file.type });
+  if (error) { console.error('uploadVoucherPhoto error:', error); throw error; }
+  return path;
+}
+
+function deleteVoucherPhoto(path) {
+  if (!path) return;
+  signedPhotoUrlCache.delete(path);
+  supabase.storage.from(PHOTO_BUCKET).remove([path]).then(({ error }) => {
+    if (error) console.error('deleteVoucherPhoto error:', error);
+  });
+}
+
+async function getVoucherPhotoUrl(path) {
+  if (!path) return null;
+  const cached = signedPhotoUrlCache.get(path);
+  if (cached && cached.expiresAt > Date.now()) return cached.url;
+  const { data, error } = await supabase.storage.from(PHOTO_BUCKET).createSignedUrl(path, 3600);
+  if (error) { console.error('getVoucherPhotoUrl error:', error); return null; }
+  signedPhotoUrlCache.set(path, { url: data.signedUrl, expiresAt: Date.now() + 55 * 60 * 1000 });
+  return data.signedUrl;
+}
+
+/* ============================================================
    VOUCHER ACTIONS
    ============================================================ */
 async function saveVoucher(data) {
@@ -598,8 +634,10 @@ async function saveVoucher(data) {
 }
 
 async function deleteVoucher(id) {
+  const existing = state.vouchers.find(v => v.id === id);
   const { error } = await supabase.from('vouchers').delete().eq('id', id);
   if (error) { console.error('deleteVoucher error:', error); showToast('Error deleting voucher'); return; }
+  if (existing?.photoPath) deleteVoucherPhoto(existing.photoPath);
   showToast('Voucher deleted');
   go('vouchers');
 }
@@ -1006,6 +1044,7 @@ const icon = {
   eye:    `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`,
   eyeOff: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>`,
   plus2:  `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>`,
+  camera: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>`,
 };
 
 const navIcons = {
@@ -1450,6 +1489,20 @@ function viewVoucherForm() {
       </div>
 
       <div class="form-group">
+        <label>Photo of Gift Card</label>
+        <div class="photo-upload" id="photo-upload-wrap" data-action="pick-photo" role="button" tabindex="0">
+          <img id="voucher-photo-img" class="photo-preview" style="${v?.photoPath ? '' : 'display:none'}" alt="Gift card photo">
+          <div id="photo-upload-empty" class="photo-upload-empty" style="${v?.photoPath ? 'display:none' : ''}">
+            ${icon.camera}
+            <span>Take or upload a photo</span>
+          </div>
+        </div>
+        <input type="file" id="voucher-photo-input" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" style="display:none">
+        <button type="button" class="btn btn-ghost btn-sm" id="remove-photo-btn" data-action="remove-photo" style="margin-top:8px;${v?.photoPath ? '' : 'display:none'}">${icon.trash} Remove Photo</button>
+        <span class="form-hint">JPG, PNG, WEBP or HEIC — max 10MB</span>
+      </div>
+
+      <div class="form-group">
         <label>Value (€) <span style="color:var(--danger)">*</span></label>
         <input type="text" name="amount" placeholder="50,00" value="${esc(v?.value||'')}" required>
       </div>
@@ -1549,6 +1602,12 @@ function viewVoucherDetail() {
       ${icon.bell}
       <span>Reminder set for <strong>${formatDate(activeReminder.reminderDate)}</strong>${activeReminder.reminderTime ? ` at ${activeReminder.reminderTime}` : ''}</span>
       <button class="btn-icon" data-action="dismiss-reminder" data-id="${esc(activeReminder.id)}" title="Remove reminder" style="margin-left:auto;opacity:0.6;font-size:0.75rem">✕</button>
+    </div>
+    ` : ''}
+
+    ${v.photoPath ? `
+    <div class="voucher-photo-block">
+      <img id="voucher-detail-photo" class="voucher-photo" alt="Photo of ${esc(v.brand)} gift card">
     </div>
     ` : ''}
 
@@ -2341,6 +2400,31 @@ function render() {
   el.innerHTML = (!state.currentUser ? (VIEWS[state.view] || viewAuth)() : (VIEWS[state.view] || viewHome)());
   attachListeners();
   if (state.view === 'profile') updatePushStatusLabel();
+  if (state.view === 'voucher-form') loadVoucherFormPhotoPreview();
+  if (state.view === 'voucher-detail') loadVoucherDetailPhoto();
+}
+
+async function loadVoucherFormPhotoPreview() {
+  if (pendingPhotoFile || pendingPhotoRemoved) return; // local preview already showing, or cleared
+  const id = state.params.id;
+  const v  = id ? state.vouchers.find(x => x.id === id) : null;
+  if (!v?.photoPath) return;
+  const url = await getVoucherPhotoUrl(v.photoPath);
+  const img = document.getElementById('voucher-photo-img');
+  if (img && url) img.src = url;
+}
+
+async function loadVoucherDetailPhoto() {
+  const id = state.params.id;
+  const v  = state.vouchers.find(x => x.id === id);
+  if (!v?.photoPath) return;
+  const url = await getVoucherPhotoUrl(v.photoPath);
+  const img = document.getElementById('voucher-detail-photo');
+  if (img && url) {
+    img.src = url;
+    img.style.cursor = 'pointer';
+    img.onclick = () => window.open(url, '_blank', 'noopener');
+  }
 }
 
 async function updatePushStatusLabel() {
@@ -2367,6 +2451,8 @@ async function updatePushStatusLabel() {
    EVENT LISTENERS
    ============================================================ */
 let _listenersAttached = false;
+let pendingPhotoFile    = null;  // File chosen in the voucher form, not yet uploaded
+let pendingPhotoRemoved = false; // true if the user removed the existing photo
 
 function showBrandSuggestions(value) {
   const el = document.getElementById('brand-suggestions');
@@ -2542,6 +2628,28 @@ async function handleAction(el, e) {
       showConfirm({ title: 'Delete Voucher?', message: 'This cannot be undone.', confirmLabel: 'Delete', onConfirm: () => deleteVoucher(id) });
       break;
 
+    case 'pick-photo': {
+      e.preventDefault();
+      const input = document.getElementById('voucher-photo-input');
+      if (input) input.click();
+      break;
+    }
+
+    case 'remove-photo': {
+      e.preventDefault();
+      pendingPhotoFile    = null;
+      pendingPhotoRemoved = true;
+      const input     = document.getElementById('voucher-photo-input');
+      const img       = document.getElementById('voucher-photo-img');
+      const empty     = document.getElementById('photo-upload-empty');
+      const removeBtn = document.getElementById('remove-photo-btn');
+      if (input) input.value = '';
+      if (img)   { img.removeAttribute('src'); img.style.display = 'none'; }
+      if (empty) empty.style.display = '';
+      if (removeBtn) removeBtn.style.display = 'none';
+      break;
+    }
+
     case 'edit-referral':
       go('referral-form', { id });
       break;
@@ -2645,6 +2753,20 @@ function handleInput(e) {
 function handleChange(e) {
   const sortEl = e.target.closest('[data-sort]');
   if (sortEl) { state.activeSort = sortEl.value; render(); }
+
+  if (e.target.id === 'voucher-photo-input') {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) { showToast('Photo must be under 10MB'); e.target.value = ''; return; }
+    pendingPhotoFile    = file;
+    pendingPhotoRemoved = false;
+    const img       = document.getElementById('voucher-photo-img');
+    const empty     = document.getElementById('photo-upload-empty');
+    const removeBtn = document.getElementById('remove-photo-btn');
+    if (img)   { img.src = URL.createObjectURL(file); img.style.display = ''; }
+    if (empty) empty.style.display = 'none';
+    if (removeBtn) removeBtn.style.display = '';
+  }
 }
 
 async function handleSubmit(e) {
@@ -2746,8 +2868,20 @@ async function handleSubmit(e) {
       voucherType: d.voucherType || 'gift_card',
     };
     if (d.voucherId) data.id = d.voucherId;
+    const existing = d.voucherId ? state.vouchers.find(v => v.id === d.voucherId) : null;
     try {
+      if (pendingPhotoFile) {
+        data.photoPath = await uploadVoucherPhoto(pendingPhotoFile);
+      } else if (pendingPhotoRemoved) {
+        data.photoPath = null;
+      }
       await saveVoucher(data);
+      // Only clean up the old file once the DB row is safely pointing at the new one.
+      if ((pendingPhotoFile || pendingPhotoRemoved) && existing?.photoPath && existing.photoPath !== data.photoPath) {
+        deleteVoucherPhoto(existing.photoPath);
+      }
+      pendingPhotoFile    = null;
+      pendingPhotoRemoved = false;
     } catch (err) {
       console.error('saveVoucher exception:', err);
       showToast('Error saving voucher');

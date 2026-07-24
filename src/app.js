@@ -157,6 +157,7 @@ function mapVoucher(row) {
     copyCount:   row.copy_count || 0,
     createdAt:   row.created_at,
     voucherType: row.voucher_type || 'gift_card',
+    barcodePath: row.barcode_path || null,
   };
 }
 
@@ -175,6 +176,7 @@ function voucherToDb(v) {
     status:          v.listed ? 'listed' : (v.status || 'active'),
     copy_count:      v.copyCount || 0,
     voucher_type:    v.voucherType || 'gift_card',
+    barcode_path:    v.barcodePath !== undefined ? v.barcodePath : null,
   };
 }
 
@@ -506,6 +508,29 @@ async function go(view, params = {}) {
       pendingNewFiles.forEach(f => { if (f.previewUrl) URL.revokeObjectURL(f.previewUrl); });
       pendingNewFiles  = [];
       removedFileIds   = [];
+      if (pendingExtractionFile) {
+        // Arriving from startVoucherScan — pendingBarcode/pendingExtractionResult
+        // were already resolved before this navigation, so leave them intact
+        // for the template/render() hook below to consume.
+        const { file, mimeType } = pendingExtractionFile;
+        const kind = fileKind(mimeType);
+        const entry = {
+          localId: randomId(),
+          file,
+          mimeType,
+          kind,
+          previewUrl: kind === 'image' ? URL.createObjectURL(file) : null,
+        };
+        pendingNewFiles.push(entry);
+        pendingExtractionEntry = entry;
+        pendingExtractionFile = null;
+      } else {
+        // Plain navigation (Manual Entry / Edit) — clear any leftover scan state.
+        if (pendingBarcode?.previewUrl) URL.revokeObjectURL(pendingBarcode.previewUrl);
+        pendingBarcode           = null;
+        barcodeRemoved           = false;
+        pendingExtractionResult  = null;
+      }
       await Promise.all([fetchVouchers(), fetchBrands()]);
       state.voucherFiles = params.id ? await fetchVoucherFiles(params.id) : [];
       break;
@@ -589,10 +614,20 @@ async function logout() {
    ============================================================ */
 const FILE_BUCKET = 'voucher-photos';
 const ALLOWED_FILE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif', 'application/pdf'];
+const EXT_MIME_FALLBACK = { pdf: 'application/pdf', jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', heic: 'image/heic', heif: 'image/heif' };
 const signedFileUrlCache = new Map(); // path -> { url, expiresAt }
 
 function fileKind(mimeType) {
   return mimeType === 'application/pdf' ? 'pdf' : 'image';
+}
+
+// Some mobile file providers (iOS "Browse", Google Drive/Dropbox pickers)
+// hand back an empty or generic file.type for PDFs — fall back to the
+// extension so those files aren't wrongly rejected as "unsupported".
+function resolveMimeType(file) {
+  if (ALLOWED_FILE_TYPES.includes(file.type)) return file.type;
+  const ext = (file.name.split('.').pop() || '').toLowerCase();
+  return EXT_MIME_FALLBACK[ext] || file.type;
 }
 
 // crypto.randomUUID() only exists in secure contexts (HTTPS/localhost) —
@@ -601,11 +636,18 @@ function randomId() {
   return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
 }
 
-async function uploadVoucherFile(file) {
+async function uploadVoucherFile(file, mimeType = file.type) {
   const ext = (file.name.split('.').pop() || 'bin').toLowerCase().replace(/[^a-z0-9]/g, '') || 'bin';
   const path = `${state.currentUser.id}/${randomId()}.${ext}`;
-  const { error } = await supabase.storage.from(FILE_BUCKET).upload(path, file, { contentType: file.type });
+  const { error } = await supabase.storage.from(FILE_BUCKET).upload(path, file, { contentType: mimeType });
   if (error) { console.error('uploadVoucherFile error:', error); throw error; }
+  return path;
+}
+
+async function uploadBarcodeBlob(blob) {
+  const path = `${state.currentUser.id}/barcode-${randomId()}.png`;
+  const { error } = await supabase.storage.from(FILE_BUCKET).upload(path, blob, { contentType: 'image/png' });
+  if (error) { console.error('uploadBarcodeBlob error:', error); throw error; }
   return path;
 }
 
@@ -636,6 +678,193 @@ async function fetchVoucherFiles(voucherId) {
     .order('position', { ascending: true });
   if (error) { console.error('fetchVoucherFiles error:', error); return []; }
   return data || [];
+}
+
+/* ============================================================
+   BARCODE / QR DETECTION (client-side crop, purely local —
+   nothing is uploaded until the voucher is actually saved)
+   ============================================================ */
+function loadImageElement(url) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error('image failed to load'));
+    img.src = url;
+  });
+}
+
+// Scans a photo for a QR code or 1D barcode and, if found, crops just that
+// region out (with a small margin) so it can be displayed large enough to
+// scan directly off the screen. Returns null if no photo, PDF, or no code
+// found — this is best-effort, not every voucher photo has one.
+async function detectBarcodeCrop(file, mimeType) {
+  if (fileKind(mimeType) !== 'image') return null;
+  const objectUrl = URL.createObjectURL(file);
+  try {
+    const { BrowserMultiFormatReader } = await import('@zxing/browser');
+    const img = await loadImageElement(objectUrl);
+    const reader = new BrowserMultiFormatReader();
+    let result;
+    try {
+      result = await reader.decodeFromImageElement(img);
+    } catch {
+      return null; // no barcode/QR found in this image
+    }
+    const points = (result.getResultPoints?.() || []).filter(Boolean);
+    if (!points.length) return null;
+    const xs = points.map(p => p.getX());
+    const ys = points.map(p => p.getY());
+    const pad = Math.max(img.naturalWidth, img.naturalHeight) * 0.08;
+    const x0 = Math.max(0, Math.min(...xs) - pad);
+    const y0 = Math.max(0, Math.min(...ys) - pad);
+    const x1 = Math.min(img.naturalWidth, Math.max(...xs) + pad);
+    const y1 = Math.min(img.naturalHeight, Math.max(...ys) + pad);
+    const w = x1 - x0, h = y1 - y0;
+    if (w < 20 || h < 20) return null;
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    canvas.getContext('2d').drawImage(img, x0, y0, w, h, 0, 0, w, h);
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+    return blob ? { blob, previewUrl: URL.createObjectURL(blob) } : null;
+  } catch (err) {
+    console.error('detectBarcodeCrop error:', err);
+    return null;
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
+// Only auto-fills the barcode slot if it's currently empty, mirroring the
+// "pre-fill, never clobber" rule used for the AI text fields — an explicit
+// remove always wins over a later auto-detect from another photo.
+async function maybeAutoDetectBarcode(file, mimeType, existingBarcodePath) {
+  if (pendingBarcode || barcodeRemoved || existingBarcodePath) return;
+  const found = await detectBarcodeCrop(file, mimeType);
+  if (!found || pendingBarcode || barcodeRemoved) return; // re-check: state may have changed while awaiting
+  pendingBarcode = found;
+  const group = document.getElementById('barcode-group');
+  const preview = document.getElementById('barcode-preview');
+  if (group && preview) {
+    group.style.display = '';
+    preview.innerHTML = barcodeTileHtml({ previewUrl: found.previewUrl });
+  }
+}
+
+/* ============================================================
+   AI VOUCHER EXTRACTION (pre-fill only — the user still reviews
+   and explicitly saves; nothing here writes to the database)
+   ============================================================ */
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || '').split(',')[1] || '');
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
+// Pure data fetch — no DOM/toast side effects, so it can run behind the
+// scan-loading screen (see startVoucherScan) without racing the render.
+// Returns the sanitized fields object, or null if extraction failed.
+async function extractVoucherFields(file, mimeType) {
+  try {
+    const fileBase64 = await fileToBase64(file);
+    const { data, error } = await supabase.functions.invoke('extract-voucher', {
+      body: { fileBase64, mimeType },
+    });
+    if (error || !data?.fields) return null;
+    return data.fields;
+  } catch (err) {
+    console.error('extractVoucherFields error:', err);
+    return null;
+  }
+}
+
+// Only fills fields the user hasn't already typed into — this is strictly
+// a pre-fill, the user still reviews and submits through the normal form.
+function applyExtractedFields(fields) {
+  const form = document.getElementById('form-voucher');
+  if (!form) return;
+
+  const setIfEmpty = (name, value) => {
+    if (value == null || value === '') return;
+    const field = form.querySelector(`[name="${name}"]`);
+    if (field && !field.value) field.value = value;
+  };
+
+  setIfEmpty('brand', fields.brand);
+  if (fields.amount != null) setIfEmpty('amount', String(fields.amount));
+  setIfEmpty('expiryDate', fields.expiryDate);
+  setIfEmpty('code', fields.code);
+  setIfEmpty('pin', fields.pin);
+  setIfEmpty('notes', fields.termsAndConditions);
+
+  if (fields.category && CATEGORIES.includes(fields.category)) {
+    const catSel = form.querySelector('[name="category"]');
+    if (catSel) catSel.value = fields.category;
+  }
+  if (fields.voucherType) {
+    const typeSel = form.querySelector('[name="voucherType"]');
+    if (typeSel) typeSel.value = fields.voucherType;
+  }
+}
+
+function showScanLoadingScreen() {
+  const el = document.createElement('div');
+  el.id = 'scan-loading-screen';
+  el.className = 'scan-loading';
+  el.innerHTML = `
+    <div class="scan-spinner"></div>
+    <h3>Reading your voucher…</h3>
+    <p>Detecting the brand, value, code and barcode from your photo.</p>
+    <button type="button" class="scan-skip" id="scan-skip-btn">Skip &amp; enter manually</button>
+  `;
+  document.body.appendChild(el);
+  return el;
+}
+
+function hideScanLoadingScreen() {
+  document.getElementById('scan-loading-screen')?.remove();
+}
+
+let scanToken = 0; // guards against a superseded/skipped scan applying stale results later
+
+// Runs AI field extraction and barcode detection in parallel behind a full
+// -screen loading state, then only navigates to the form once both are
+// resolved — so the very first render already has the pre-filled fields
+// and the cropped barcode, instead of racing a background fill-in against
+// however fast the user hits Save.
+async function startVoucherScan(file, mimeType) {
+  const token = ++scanToken;
+  const screen = showScanLoadingScreen();
+  let settled = false;
+
+  const finish = (fields, barcode, { silent = false } = {}) => {
+    if (settled || token !== scanToken) return;
+    settled = true;
+    hideScanLoadingScreen();
+    pendingExtractionFile   = { file, mimeType };
+    pendingExtractionResult = fields;
+    pendingBarcode           = barcode;
+    go('voucher-form').then(() => {
+      if (silent) return;
+      showToast(fields
+        ? 'Auto-filled from your photo — please check the details before saving.'
+        : 'Could not auto-read this file — please fill in manually.');
+    });
+  };
+
+  screen.querySelector('#scan-skip-btn').addEventListener('click', () => finish(null, null, { silent: true }));
+
+  const [extractionOutcome, barcodeOutcome] = await Promise.allSettled([
+    Promise.race([extractVoucherFields(file, mimeType), new Promise(resolve => setTimeout(() => resolve(null), 25000))]),
+    Promise.race([detectBarcodeCrop(file, mimeType), new Promise(resolve => setTimeout(() => resolve(null), 25000))]),
+  ]);
+  finish(
+    extractionOutcome.status === 'fulfilled' ? extractionOutcome.value : null,
+    barcodeOutcome.status === 'fulfilled' ? barcodeOutcome.value : null,
+  );
 }
 
 /* ============================================================
@@ -1332,7 +1561,7 @@ function viewHome() {
     <section class="home-section">
       <h3 class="section-title">Quick Actions</h3>
       <div class="quick-actions" style="margin-top:10px">
-        <button class="quick-action" data-nav="voucher-form">
+        <button class="quick-action" data-action="add-voucher-menu">
           <div class="qa-icon" style="background:#CFF1E8">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#13B5A2" stroke-width="2" stroke-linecap="round"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/><line x1="12" y1="14" x2="12" y2="18"/><line x1="10" y1="16" x2="14" y2="16"/></svg>
           </div>
@@ -1369,7 +1598,7 @@ function viewHome() {
         <div style="color:var(--secondary);display:flex;justify-content:center;margin-bottom:12px"><svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg></div>
         <h3 style="margin-bottom:8px">No vouchers yet</h3>
         <p style="color:var(--text-muted);font-size:0.875rem;margin-bottom:16px">Add your first voucher to start managing your wallet</p>
-        <button class="btn btn-primary" data-nav="voucher-form">Add Voucher</button>
+        <button class="btn btn-primary" data-action="add-voucher-menu">Add Voucher</button>
       </div>
     </section>
     ` : ''}
@@ -1488,11 +1717,11 @@ function viewVouchers() {
           <div class="empty-icon">${counts.all === 0 ? navIcons.vouchers : icon.search}</div>
           <h3>${counts.all === 0 ? 'No vouchers yet' : 'No results found'}</h3>
           <p>${counts.all === 0 ? 'Add vouchers to manage them in one place' : 'Try a different search or filter'}</p>
-          ${counts.all === 0 ? '<button class="btn btn-primary" data-nav="voucher-form">Add Your First Voucher</button>' : ''}
+          ${counts.all === 0 ? '<button class="btn btn-primary" data-action="add-voucher-menu">Add Your First Voucher</button>' : ''}
         </div>`
     }
   </main>
-  <button class="fab" data-nav="voucher-form" title="Add voucher">${icon.plus}</button>
+  <button class="fab" data-action="add-voucher-menu" title="Add voucher">${icon.plus}</button>
   ${renderBottomNav()}`;
 }
 
@@ -1514,6 +1743,14 @@ function attachmentTileHtml({ existingId, localId, path, kind, previewUrl }) {
   </div>`;
 }
 
+function barcodeTileHtml({ path, previewUrl }) {
+  return `
+  <div class="barcode-tile">
+    <img class="barcode-thumb" ${previewUrl ? `src="${esc(previewUrl)}"` : `data-path="${esc(path)}"`} alt="Barcode">
+    <button type="button" class="attachment-remove" data-action="remove-barcode" title="Remove">✕</button>
+  </div>`;
+}
+
 /* ============================================================
    VIEW: VOUCHER FORM (add / edit)
    ============================================================ */
@@ -1527,6 +1764,16 @@ function viewVoucherForm() {
   <main class="content">
     <form id="form-voucher" autocomplete="off">
       ${v ? `<input type="hidden" name="voucherId" value="${esc(v.id)}">` : ''}
+      <div class="form-group" id="barcode-group" ${(!pendingBarcode && !(v?.barcodePath && !barcodeRemoved)) ? 'style="display:none"' : ''}>
+        <label>Barcode / QR Code</label>
+        <div id="barcode-preview">
+          ${pendingBarcode
+            ? barcodeTileHtml({ previewUrl: pendingBarcode.previewUrl })
+            : (v?.barcodePath && !barcodeRemoved ? barcodeTileHtml({ path: v.barcodePath }) : '')}
+        </div>
+        <span class="form-hint">Auto-detected from your photo — shown at the top of this voucher for quick scanning</span>
+      </div>
+
       <div class="form-group">
         <label>Brand / Store <span style="color:var(--danger)">*</span></label>
         ${brandAutocomplete(v?.brand || '')}
@@ -1536,6 +1783,7 @@ function viewVoucherForm() {
         <label>Photos or Files</label>
         <div class="attachment-grid" id="attachment-grid">
           ${state.voucherFiles.map(f => attachmentTileHtml({ existingId: f.id, path: f.file_path, kind: f.file_type })).join('')}
+          ${pendingNewFiles.map(f => attachmentTileHtml({ localId: f.localId, kind: f.kind, previewUrl: f.previewUrl })).join('')}
           <div class="attachment-tile attachment-add" data-action="pick-photo" role="button" tabindex="0">
             ${icon.camera}
             <span>Add</span>
@@ -1573,8 +1821,8 @@ function viewVoucherForm() {
       </div>
 
       <div class="form-group">
-        <label>Notes</label>
-        <textarea name="notes" placeholder="Any extra info…" rows="3">${esc(v?.notes||'')}</textarea>
+        <label>Notes / Terms &amp; Conditions</label>
+        <textarea name="notes" placeholder="Any extra info, or the voucher's terms &amp; conditions…" rows="3">${esc(v?.notes||'')}</textarea>
       </div>
 
       <div class="form-group">
@@ -1639,6 +1887,12 @@ function viewVoucherDetail() {
       <div class="vd-value">${formatCurrency(v.balance != null ? v.balance : v.value, v.currency)}</div>
       ${badge(s)}
     </div>
+
+    ${v.barcodePath ? `
+    <div class="barcode-display">
+      <img data-path="${esc(v.barcodePath)}" alt="Barcode">
+    </div>
+    ` : ''}
 
     ${activeReminder ? `
     <div class="reminder-info-bar">
@@ -2341,6 +2595,48 @@ function showConfirm({ title, message, confirmLabel, confirmClass = 'btn-danger'
   overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
 }
 
+// "+" tap: offers photo/file capture (which kicks off startVoucherScan)
+// alongside a plain manual-entry path.
+//
+// Just one file input, not one per source: on mobile browsers, any file
+// input that accepts images (without a `capture` attribute) already opens
+// the OS's own combined sheet with Take Photo / Photo Library / Browse
+// Files as options — so a separate "Take Photo" button just duplicated a
+// choice the native sheet already offers. Let the OS handle that split.
+function showAddVoucherMenu() {
+  const overlay = document.createElement('div');
+  overlay.className = 'overlay';
+  overlay.innerHTML = `
+  <div class="dialog">
+    <h3>Add Voucher</h3>
+    <p>Scan a photo or PDF to auto-fill the details, or enter them yourself.</p>
+    <div class="dialog-actions" style="flex-direction:column;gap:8px">
+      <button type="button" class="btn btn-primary btn-full" id="menu-choose-file">Photo or File</button>
+      <button type="button" class="btn btn-ghost btn-full" id="menu-manual-entry">Manual Entry</button>
+    </div>
+    <input type="file" id="menu-file-input" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,application/pdf" style="display:none">
+  </div>`;
+  document.body.appendChild(overlay);
+
+  const closeMenu = () => overlay.remove();
+  overlay.addEventListener('click', e => { if (e.target === overlay) closeMenu(); });
+  overlay.querySelector('#menu-manual-entry').addEventListener('click', () => { closeMenu(); go('voucher-form'); });
+  overlay.querySelector('#menu-choose-file').addEventListener('click', () => overlay.querySelector('#menu-file-input').click());
+
+  overlay.querySelectorAll('input[type=file]').forEach(input => {
+    input.addEventListener('change', () => {
+      const file = input.files[0];
+      input.value = '';
+      if (!file) return;
+      const mimeType = resolveMimeType(file);
+      if (!ALLOWED_FILE_TYPES.includes(mimeType)) { showToast('Unsupported file type'); return; }
+      if (file.size > 10 * 1024 * 1024) { showToast(`${file.name} is over 10MB`); return; }
+      closeMenu();
+      startVoucherScan(file, mimeType);
+    });
+  });
+}
+
 /* ============================================================
    VIEW: RESET PASSWORD (from recovery email link)
    ============================================================ */
@@ -2449,14 +2745,30 @@ function render() {
   attachListeners();
   if (state.view === 'profile') updatePushStatusLabel();
   if (state.view === 'voucher-form') loadVoucherFormAttachmentThumbs();
+  if (state.view === 'voucher-detail') loadVoucherDetailBarcode();
+  if (state.view === 'voucher-form' && pendingExtractionEntry) {
+    // AI fields and the barcode crop are already resolved by startVoucherScan
+    // before this render — just apply the fields (the barcode preview is
+    // already part of the template itself, via pendingBarcode).
+    pendingExtractionEntry = null; // consume once so re-renders (e.g. brand typing) don't re-apply
+    if (pendingExtractionResult) applyExtractedFields(pendingExtractionResult);
+    pendingExtractionResult = null;
+  }
 }
 
 async function loadVoucherFormAttachmentThumbs() {
-  const imgs = document.querySelectorAll('#attachment-grid .attachment-thumb[data-path]');
+  const imgs = document.querySelectorAll('#attachment-grid .attachment-thumb[data-path], #barcode-preview .barcode-thumb[data-path]');
   for (const img of imgs) {
     const url = await getVoucherFileUrl(img.dataset.path);
     if (url) img.src = url;
   }
+}
+
+async function loadVoucherDetailBarcode() {
+  const img = document.querySelector('.barcode-display img[data-path]');
+  if (!img) return;
+  const url = await getVoucherFileUrl(img.dataset.path);
+  if (url) img.src = url;
 }
 
 async function updatePushStatusLabel() {
@@ -2483,8 +2795,13 @@ async function updatePushStatusLabel() {
    EVENT LISTENERS
    ============================================================ */
 let _listenersAttached = false;
-let pendingNewFiles  = []; // [{ localId, file, kind: 'image'|'pdf', previewUrl }] chosen in the voucher form, not yet uploaded
+let pendingNewFiles  = []; // [{ localId, file, mimeType, kind: 'image'|'pdf', previewUrl }] chosen in the voucher form, not yet uploaded
 let removedFileIds   = []; // ids of existing voucher_files rows queued for deletion on save
+let pendingExtractionFile   = null; // { file, mimeType } picked from the add-voucher menu, staged for go('voucher-form') to attach
+let pendingExtractionEntry  = null; // the pendingNewFiles entry whose AI-extracted fields still need applying after render
+let pendingExtractionResult = null; // fields already resolved by startVoucherScan, applied on the next voucher-form render
+let pendingBarcode  = null; // { blob, previewUrl } newly detected barcode/QR crop, not yet uploaded
+let barcodeRemoved  = false; // true if the user removed the current/existing barcode this session
 
 function showBrandSuggestions(value) {
   const el = document.getElementById('brand-suggestions');
@@ -2667,6 +2984,11 @@ async function handleAction(el, e) {
       break;
     }
 
+    case 'add-voucher-menu':
+      e.preventDefault();
+      showAddVoucherMenu();
+      break;
+
     case 'remove-existing-file': {
       e.preventDefault();
       removedFileIds.push(el.dataset.fileId);
@@ -2689,6 +3011,18 @@ async function handleAction(el, e) {
       const url = await getVoucherFileUrl(el.dataset.path);
       if (url) window.open(url, '_blank', 'noopener');
       else showToast('Could not open file');
+      break;
+    }
+
+    case 'remove-barcode': {
+      e.preventDefault();
+      if (pendingBarcode?.previewUrl) URL.revokeObjectURL(pendingBarcode.previewUrl);
+      pendingBarcode = null;
+      barcodeRemoved = true;
+      const group = document.getElementById('barcode-group');
+      const preview = document.getElementById('barcode-preview');
+      if (preview) preview.innerHTML = '';
+      if (group) group.style.display = 'none';
       break;
     }
 
@@ -2799,13 +3133,16 @@ function handleChange(e) {
   if (e.target.id === 'voucher-file-input') {
     const grid = document.getElementById('attachment-grid');
     const addTile = grid?.querySelector('.attachment-add');
+    const existingBarcodePath = state.params.id ? (state.vouchers.find(v => v.id === state.params.id)?.barcodePath || null) : null;
     for (const file of e.target.files) {
-      if (!ALLOWED_FILE_TYPES.includes(file.type)) { showToast('Unsupported file type'); continue; }
+      const mimeType = resolveMimeType(file);
+      if (!ALLOWED_FILE_TYPES.includes(mimeType)) { showToast('Unsupported file type'); continue; }
       if (file.size > 10 * 1024 * 1024) { showToast(`${file.name} is over 10MB`); continue; }
-      const kind = fileKind(file.type);
-      const entry = { localId: randomId(), file, kind, previewUrl: kind === 'image' ? URL.createObjectURL(file) : null };
+      const kind = fileKind(mimeType);
+      const entry = { localId: randomId(), file, mimeType, kind, previewUrl: kind === 'image' ? URL.createObjectURL(file) : null };
       pendingNewFiles.push(entry);
       if (addTile) addTile.insertAdjacentHTML('beforebegin', attachmentTileHtml(entry));
+      maybeAutoDetectBarcode(file, mimeType, existingBarcodePath);
     }
     e.target.value = '';
   }
@@ -2910,7 +3247,14 @@ async function handleSubmit(e) {
       voucherType: d.voucherType || 'gift_card',
     };
     if (d.voucherId) data.id = d.voucherId;
+    const existingBarcodePath = d.voucherId ? (state.vouchers.find(v => v.id === d.voucherId)?.barcodePath || null) : null;
     try {
+      if (pendingBarcode) {
+        data.barcodePath = await uploadBarcodeBlob(pendingBarcode.blob);
+      } else if (barcodeRemoved) {
+        data.barcodePath = null;
+      }
+
       const voucherId = await saveVoucher(data);
 
       for (const fileId of removedFileIds) {
@@ -2922,7 +3266,7 @@ async function handleSubmit(e) {
       const keptCount = state.voucherFiles.length - removedFileIds.length;
       for (let i = 0; i < pendingNewFiles.length; i++) {
         const entry = pendingNewFiles[i];
-        const path = await uploadVoucherFile(entry.file);
+        const path = await uploadVoucherFile(entry.file, entry.mimeType);
         const { error: fileErr } = await supabase.from('voucher_files').insert({
           voucher_id: voucherId,
           user_id:    state.currentUser.id,
@@ -2933,6 +3277,13 @@ async function handleSubmit(e) {
         if (fileErr) { console.error('voucher_files insert error:', fileErr); throw fileErr; }
         if (entry.previewUrl) URL.revokeObjectURL(entry.previewUrl);
       }
+
+      if (existingBarcodePath && data.barcodePath !== undefined && data.barcodePath !== existingBarcodePath) {
+        deleteVoucherFileObject(existingBarcodePath);
+      }
+      if (pendingBarcode?.previewUrl) URL.revokeObjectURL(pendingBarcode.previewUrl);
+      pendingBarcode  = null;
+      barcodeRemoved  = false;
 
       pendingNewFiles = [];
       removedFileIds  = [];

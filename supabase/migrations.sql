@@ -56,6 +56,8 @@ CREATE POLICY "users_update" ON public.users
 -- ============================================================
 -- public.vouchers
 -- ============================================================
+ALTER TABLE public.vouchers ADD COLUMN IF NOT EXISTS barcode_path TEXT;
+
 ALTER TABLE public.vouchers ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "vouchers_select" ON public.vouchers;
@@ -254,3 +256,30 @@ CREATE POLICY "notifications_update" ON public.notifications
 
 CREATE POLICY "notifications_delete" ON public.notifications
   FOR DELETE TO authenticated USING (user_id = auth.uid());
+
+-- ============================================================
+-- public.voucher_extraction_log  (rate-limiting + audit trail for
+-- AI voucher extraction — metadata only, never field values)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS public.voucher_extraction_log (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id    UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  file_type  TEXT NOT NULL CHECK (file_type IN ('image', 'pdf')),
+  success    BOOLEAN NOT NULL,
+  error_code TEXT,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- RLS policies alone aren't sufficient without the base table grant.
+GRANT SELECT, INSERT ON public.voucher_extraction_log TO authenticated;
+
+ALTER TABLE public.voucher_extraction_log ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "extraction_log_select" ON public.voucher_extraction_log;
+DROP POLICY IF EXISTS "extraction_log_insert" ON public.voucher_extraction_log;
+
+CREATE POLICY "extraction_log_select" ON public.voucher_extraction_log
+  FOR SELECT TO authenticated USING (user_id = auth.uid());
+
+CREATE POLICY "extraction_log_insert" ON public.voucher_extraction_log
+  FOR INSERT TO authenticated WITH CHECK (user_id = auth.uid());

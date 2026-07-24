@@ -26,6 +26,7 @@ const state = {
   friendIds:       [],   // UUID array for quick lookup
   pendingRequests: [],   // incoming friend requests { id, requesterId, name, email }
   reminders:  [],   // notifications rows
+  voucherFiles: [],  // voucher_files rows for the voucher currently open (form or detail)
   searchQuery: '',
   activeFilter: 'active',
   activeSort: 'expiry',
@@ -156,7 +157,6 @@ function mapVoucher(row) {
     copyCount:   row.copy_count || 0,
     createdAt:   row.created_at,
     voucherType: row.voucher_type || 'gift_card',
-    photoPath:   row.photo_url || null,
   };
 }
 
@@ -175,7 +175,6 @@ function voucherToDb(v) {
     status:          v.listed ? 'listed' : (v.status || 'active'),
     copy_count:      v.copyCount || 0,
     voucher_type:    v.voucherType || 'gift_card',
-    photo_url:       v.photoPath !== undefined ? v.photoPath : null,
   };
 }
 
@@ -501,11 +500,14 @@ async function go(view, params = {}) {
       break;
     case 'voucher-detail':
       await Promise.all([fetchVouchers(), fetchReminders()]);
+      state.voucherFiles = params.id ? await fetchVoucherFiles(params.id) : [];
       break;
     case 'voucher-form':
-      pendingPhotoFile    = null;
-      pendingPhotoRemoved = false;
+      pendingNewFiles.forEach(f => { if (f.previewUrl) URL.revokeObjectURL(f.previewUrl); });
+      pendingNewFiles  = [];
+      removedFileIds   = [];
       await Promise.all([fetchVouchers(), fetchBrands()]);
+      state.voucherFiles = params.id ? await fetchVoucherFiles(params.id) : [];
       break;
     case 'marketplace':
     case 'listing-detail':
@@ -578,66 +580,89 @@ async function logout() {
   state.friendIds       = [];
   state.pendingRequests = [];
   state.reminders       = [];
+  state.voucherFiles    = [];
   go('auth');
 }
 
 /* ============================================================
-   VOUCHER PHOTO STORAGE
+   VOUCHER FILE ATTACHMENTS (photos + PDFs)
    ============================================================ */
-const PHOTO_BUCKET = 'voucher-photos';
-const signedPhotoUrlCache = new Map(); // path -> { url, expiresAt }
+const FILE_BUCKET = 'voucher-photos';
+const ALLOWED_FILE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif', 'application/pdf'];
+const signedFileUrlCache = new Map(); // path -> { url, expiresAt }
 
-async function uploadVoucherPhoto(file) {
-  const ext = (file.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
-  const path = `${state.currentUser.id}/${crypto.randomUUID()}.${ext}`;
-  const { error } = await supabase.storage.from(PHOTO_BUCKET).upload(path, file, { contentType: file.type });
-  if (error) { console.error('uploadVoucherPhoto error:', error); throw error; }
+function fileKind(mimeType) {
+  return mimeType === 'application/pdf' ? 'pdf' : 'image';
+}
+
+// crypto.randomUUID() only exists in secure contexts (HTTPS/localhost) —
+// this works everywhere, including plain-HTTP LAN testing on a phone.
+function randomId() {
+  return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+}
+
+async function uploadVoucherFile(file) {
+  const ext = (file.name.split('.').pop() || 'bin').toLowerCase().replace(/[^a-z0-9]/g, '') || 'bin';
+  const path = `${state.currentUser.id}/${randomId()}.${ext}`;
+  const { error } = await supabase.storage.from(FILE_BUCKET).upload(path, file, { contentType: file.type });
+  if (error) { console.error('uploadVoucherFile error:', error); throw error; }
   return path;
 }
 
-function deleteVoucherPhoto(path) {
+function deleteVoucherFileObject(path) {
   if (!path) return;
-  signedPhotoUrlCache.delete(path);
-  supabase.storage.from(PHOTO_BUCKET).remove([path]).then(({ error }) => {
-    if (error) console.error('deleteVoucherPhoto error:', error);
+  signedFileUrlCache.delete(path);
+  supabase.storage.from(FILE_BUCKET).remove([path]).then(({ error }) => {
+    if (error) console.error('deleteVoucherFileObject error:', error);
   });
 }
 
-async function getVoucherPhotoUrl(path) {
+async function getVoucherFileUrl(path) {
   if (!path) return null;
-  const cached = signedPhotoUrlCache.get(path);
+  const cached = signedFileUrlCache.get(path);
   if (cached && cached.expiresAt > Date.now()) return cached.url;
-  const { data, error } = await supabase.storage.from(PHOTO_BUCKET).createSignedUrl(path, 3600);
-  if (error) { console.error('getVoucherPhotoUrl error:', error); return null; }
-  signedPhotoUrlCache.set(path, { url: data.signedUrl, expiresAt: Date.now() + 55 * 60 * 1000 });
+  const { data, error } = await supabase.storage.from(FILE_BUCKET).createSignedUrl(path, 3600);
+  if (error) { console.error('getVoucherFileUrl error:', error); return null; }
+  signedFileUrlCache.set(path, { url: data.signedUrl, expiresAt: Date.now() + 55 * 60 * 1000 });
   return data.signedUrl;
+}
+
+async function fetchVoucherFiles(voucherId) {
+  if (!voucherId) return [];
+  const { data, error } = await supabase
+    .from('voucher_files')
+    .select('*')
+    .eq('voucher_id', voucherId)
+    .order('position', { ascending: true });
+  if (error) { console.error('fetchVoucherFiles error:', error); return []; }
+  return data || [];
 }
 
 /* ============================================================
    VOUCHER ACTIONS
    ============================================================ */
+// Returns the voucher's id. Does not toast or navigate — the caller
+// (handleSubmit) does that once file attachments are also synced.
 async function saveVoucher(data) {
   await ensureBrand(data.brand, data.category);
   if (data.id) {
     const existing = state.vouchers.find(v => v.id === data.id) || {};
     const { error } = await supabase.from('vouchers').update(voucherToDb({ ...existing, ...data, userId: state.currentUser.id })).eq('id', data.id);
-    if (error) { console.error('saveVoucher update error:', error); showToast('Error saving voucher'); throw error; }
-    showToast('Voucher updated');
-    go('voucher-detail', { id: data.id });
+    if (error) { console.error('saveVoucher update error:', error); throw error; }
+    return data.id;
   } else {
     const v = { ...data, userId: state.currentUser.id, status: 'active', listed: false, copyCount: 0 };
-    const { error } = await supabase.from('vouchers').insert(voucherToDb(v));
-    if (error) { console.error('saveVoucher insert error:', error); showToast('Error saving voucher'); throw error; }
-    showToast('Voucher saved');
-    go('vouchers');
+    const { data: inserted, error } = await supabase.from('vouchers').insert(voucherToDb(v)).select('id').single();
+    if (error) { console.error('saveVoucher insert error:', error); throw error; }
+    return inserted.id;
   }
 }
 
 async function deleteVoucher(id) {
-  const existing = state.vouchers.find(v => v.id === id);
+  const files = await fetchVoucherFiles(id);
   const { error } = await supabase.from('vouchers').delete().eq('id', id);
   if (error) { console.error('deleteVoucher error:', error); showToast('Error deleting voucher'); return; }
-  if (existing?.photoPath) deleteVoucherPhoto(existing.photoPath);
+  files.forEach(f => deleteVoucherFileObject(f.file_path));
   showToast('Voucher deleted');
   go('vouchers');
 }
@@ -1045,6 +1070,7 @@ const icon = {
   eyeOff: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>`,
   plus2:  `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>`,
   camera: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>`,
+  file:   `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>`,
 };
 
 const navIcons = {
@@ -1471,6 +1497,24 @@ function viewVouchers() {
 }
 
 /* ============================================================
+   ATTACHMENT TILE (shared: server-rendered existing files +
+   JS-inserted pending files use the same markup)
+   ============================================================ */
+function attachmentTileHtml({ existingId, localId, path, kind, previewUrl }) {
+  const removeAttr = existingId
+    ? `data-action="remove-existing-file" data-file-id="${esc(existingId)}"`
+    : `data-action="remove-pending-file" data-local-id="${esc(localId)}"`;
+  const body = kind === 'pdf'
+    ? `<div class="attachment-file-icon">${icon.file}<span>PDF</span></div>`
+    : `<img class="attachment-thumb" ${previewUrl ? `src="${esc(previewUrl)}"` : `data-path="${esc(path)}"`} alt="Attachment">`;
+  return `
+  <div class="attachment-tile">
+    ${body}
+    <button type="button" class="attachment-remove" ${removeAttr} title="Remove">✕</button>
+  </div>`;
+}
+
+/* ============================================================
    VIEW: VOUCHER FORM (add / edit)
    ============================================================ */
 function viewVoucherForm() {
@@ -1489,17 +1533,16 @@ function viewVoucherForm() {
       </div>
 
       <div class="form-group">
-        <label>Photo of Gift Card</label>
-        <div class="photo-upload" id="photo-upload-wrap" data-action="pick-photo" role="button" tabindex="0">
-          <img id="voucher-photo-img" class="photo-preview" style="${v?.photoPath ? '' : 'display:none'}" alt="Gift card photo">
-          <div id="photo-upload-empty" class="photo-upload-empty" style="${v?.photoPath ? 'display:none' : ''}">
+        <label>Photos or Files</label>
+        <div class="attachment-grid" id="attachment-grid">
+          ${state.voucherFiles.map(f => attachmentTileHtml({ existingId: f.id, path: f.file_path, kind: f.file_type })).join('')}
+          <div class="attachment-tile attachment-add" data-action="pick-photo" role="button" tabindex="0">
             ${icon.camera}
-            <span>Take or upload a photo</span>
+            <span>Add</span>
           </div>
         </div>
-        <input type="file" id="voucher-photo-input" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" style="display:none">
-        <button type="button" class="btn btn-ghost btn-sm" id="remove-photo-btn" data-action="remove-photo" style="margin-top:8px;${v?.photoPath ? '' : 'display:none'}">${icon.trash} Remove Photo</button>
-        <span class="form-hint">JPG, PNG, WEBP or HEIC — max 10MB</span>
+        <input type="file" id="voucher-file-input" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,application/pdf" multiple style="display:none">
+        <span class="form-hint">Front &amp; back photos, or a PDF — JPG, PNG, WEBP, HEIC or PDF, max 10MB each</span>
       </div>
 
       <div class="form-group">
@@ -1605,9 +1648,14 @@ function viewVoucherDetail() {
     </div>
     ` : ''}
 
-    ${v.photoPath ? `
-    <div class="voucher-photo-block">
-      <img id="voucher-detail-photo" class="voucher-photo" alt="Photo of ${esc(v.brand)} gift card">
+    ${state.voucherFiles.length ? `
+    <div class="attachment-list">
+      ${state.voucherFiles.map((f, i) => `
+      <button type="button" class="attachment-row" data-action="view-attachment" data-path="${esc(f.file_path)}">
+        <span class="attachment-row-icon">${f.file_type === 'pdf' ? icon.file : icon.camera}</span>
+        <span class="attachment-row-label">${f.file_type === 'pdf' ? 'PDF document' : `Photo ${i + 1}`}</span>
+        <span class="attachment-row-view">${icon.eye} View</span>
+      </button>`).join('')}
     </div>
     ` : ''}
 
@@ -2400,30 +2448,14 @@ function render() {
   el.innerHTML = (!state.currentUser ? (VIEWS[state.view] || viewAuth)() : (VIEWS[state.view] || viewHome)());
   attachListeners();
   if (state.view === 'profile') updatePushStatusLabel();
-  if (state.view === 'voucher-form') loadVoucherFormPhotoPreview();
-  if (state.view === 'voucher-detail') loadVoucherDetailPhoto();
+  if (state.view === 'voucher-form') loadVoucherFormAttachmentThumbs();
 }
 
-async function loadVoucherFormPhotoPreview() {
-  if (pendingPhotoFile || pendingPhotoRemoved) return; // local preview already showing, or cleared
-  const id = state.params.id;
-  const v  = id ? state.vouchers.find(x => x.id === id) : null;
-  if (!v?.photoPath) return;
-  const url = await getVoucherPhotoUrl(v.photoPath);
-  const img = document.getElementById('voucher-photo-img');
-  if (img && url) img.src = url;
-}
-
-async function loadVoucherDetailPhoto() {
-  const id = state.params.id;
-  const v  = state.vouchers.find(x => x.id === id);
-  if (!v?.photoPath) return;
-  const url = await getVoucherPhotoUrl(v.photoPath);
-  const img = document.getElementById('voucher-detail-photo');
-  if (img && url) {
-    img.src = url;
-    img.style.cursor = 'pointer';
-    img.onclick = () => window.open(url, '_blank', 'noopener');
+async function loadVoucherFormAttachmentThumbs() {
+  const imgs = document.querySelectorAll('#attachment-grid .attachment-thumb[data-path]');
+  for (const img of imgs) {
+    const url = await getVoucherFileUrl(img.dataset.path);
+    if (url) img.src = url;
   }
 }
 
@@ -2451,8 +2483,8 @@ async function updatePushStatusLabel() {
    EVENT LISTENERS
    ============================================================ */
 let _listenersAttached = false;
-let pendingPhotoFile    = null;  // File chosen in the voucher form, not yet uploaded
-let pendingPhotoRemoved = false; // true if the user removed the existing photo
+let pendingNewFiles  = []; // [{ localId, file, kind: 'image'|'pdf', previewUrl }] chosen in the voucher form, not yet uploaded
+let removedFileIds   = []; // ids of existing voucher_files rows queued for deletion on save
 
 function showBrandSuggestions(value) {
   const el = document.getElementById('brand-suggestions');
@@ -2630,23 +2662,33 @@ async function handleAction(el, e) {
 
     case 'pick-photo': {
       e.preventDefault();
-      const input = document.getElementById('voucher-photo-input');
+      const input = document.getElementById('voucher-file-input');
       if (input) input.click();
       break;
     }
 
-    case 'remove-photo': {
+    case 'remove-existing-file': {
       e.preventDefault();
-      pendingPhotoFile    = null;
-      pendingPhotoRemoved = true;
-      const input     = document.getElementById('voucher-photo-input');
-      const img       = document.getElementById('voucher-photo-img');
-      const empty     = document.getElementById('photo-upload-empty');
-      const removeBtn = document.getElementById('remove-photo-btn');
-      if (input) input.value = '';
-      if (img)   { img.removeAttribute('src'); img.style.display = 'none'; }
-      if (empty) empty.style.display = '';
-      if (removeBtn) removeBtn.style.display = 'none';
+      removedFileIds.push(el.dataset.fileId);
+      el.closest('.attachment-tile')?.remove();
+      break;
+    }
+
+    case 'remove-pending-file': {
+      e.preventDefault();
+      const localId = el.dataset.localId;
+      const entry = pendingNewFiles.find(f => f.localId === localId);
+      if (entry?.previewUrl) URL.revokeObjectURL(entry.previewUrl);
+      pendingNewFiles = pendingNewFiles.filter(f => f.localId !== localId);
+      el.closest('.attachment-tile')?.remove();
+      break;
+    }
+
+    case 'view-attachment': {
+      e.preventDefault();
+      const url = await getVoucherFileUrl(el.dataset.path);
+      if (url) window.open(url, '_blank', 'noopener');
+      else showToast('Could not open file');
       break;
     }
 
@@ -2754,18 +2796,18 @@ function handleChange(e) {
   const sortEl = e.target.closest('[data-sort]');
   if (sortEl) { state.activeSort = sortEl.value; render(); }
 
-  if (e.target.id === 'voucher-photo-input') {
-    const file = e.target.files[0];
-    if (!file) return;
-    if (file.size > 10 * 1024 * 1024) { showToast('Photo must be under 10MB'); e.target.value = ''; return; }
-    pendingPhotoFile    = file;
-    pendingPhotoRemoved = false;
-    const img       = document.getElementById('voucher-photo-img');
-    const empty     = document.getElementById('photo-upload-empty');
-    const removeBtn = document.getElementById('remove-photo-btn');
-    if (img)   { img.src = URL.createObjectURL(file); img.style.display = ''; }
-    if (empty) empty.style.display = 'none';
-    if (removeBtn) removeBtn.style.display = '';
+  if (e.target.id === 'voucher-file-input') {
+    const grid = document.getElementById('attachment-grid');
+    const addTile = grid?.querySelector('.attachment-add');
+    for (const file of e.target.files) {
+      if (!ALLOWED_FILE_TYPES.includes(file.type)) { showToast('Unsupported file type'); continue; }
+      if (file.size > 10 * 1024 * 1024) { showToast(`${file.name} is over 10MB`); continue; }
+      const kind = fileKind(file.type);
+      const entry = { localId: randomId(), file, kind, previewUrl: kind === 'image' ? URL.createObjectURL(file) : null };
+      pendingNewFiles.push(entry);
+      if (addTile) addTile.insertAdjacentHTML('beforebegin', attachmentTileHtml(entry));
+    }
+    e.target.value = '';
   }
 }
 
@@ -2868,20 +2910,34 @@ async function handleSubmit(e) {
       voucherType: d.voucherType || 'gift_card',
     };
     if (d.voucherId) data.id = d.voucherId;
-    const existing = d.voucherId ? state.vouchers.find(v => v.id === d.voucherId) : null;
     try {
-      if (pendingPhotoFile) {
-        data.photoPath = await uploadVoucherPhoto(pendingPhotoFile);
-      } else if (pendingPhotoRemoved) {
-        data.photoPath = null;
+      const voucherId = await saveVoucher(data);
+
+      for (const fileId of removedFileIds) {
+        const f = state.voucherFiles.find(x => x.id === fileId);
+        await supabase.from('voucher_files').delete().eq('id', fileId);
+        if (f) deleteVoucherFileObject(f.file_path);
       }
-      await saveVoucher(data);
-      // Only clean up the old file once the DB row is safely pointing at the new one.
-      if ((pendingPhotoFile || pendingPhotoRemoved) && existing?.photoPath && existing.photoPath !== data.photoPath) {
-        deleteVoucherPhoto(existing.photoPath);
+
+      const keptCount = state.voucherFiles.length - removedFileIds.length;
+      for (let i = 0; i < pendingNewFiles.length; i++) {
+        const entry = pendingNewFiles[i];
+        const path = await uploadVoucherFile(entry.file);
+        const { error: fileErr } = await supabase.from('voucher_files').insert({
+          voucher_id: voucherId,
+          user_id:    state.currentUser.id,
+          file_path:  path,
+          file_type:  entry.kind,
+          position:   keptCount + i,
+        });
+        if (fileErr) { console.error('voucher_files insert error:', fileErr); throw fileErr; }
+        if (entry.previewUrl) URL.revokeObjectURL(entry.previewUrl);
       }
-      pendingPhotoFile    = null;
-      pendingPhotoRemoved = false;
+
+      pendingNewFiles = [];
+      removedFileIds  = [];
+      showToast(data.id ? 'Voucher updated' : 'Voucher saved');
+      go(data.id ? 'voucher-detail' : 'vouchers', data.id ? { id: voucherId } : {});
     } catch (err) {
       console.error('saveVoucher exception:', err);
       showToast('Error saving voucher');

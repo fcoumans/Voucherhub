@@ -694,87 +694,49 @@ function loadImageElement(url) {
   });
 }
 
-// Maps a point from a rotated canvas's pixel space back to the ORIGINAL
-// (unrotated) image's coordinate space, so crops always come from the
-// full-resolution source image regardless of which rotation decoded it.
-function mapRotatedPoint(x, y, rotationDeg, imgW, imgH) {
-  switch (rotationDeg) {
-    case 90:  return { x: y,        y: imgH - x };
-    case 180: return { x: imgW - x, y: imgH - y };
-    case 270: return { x: imgW - y, y: x };
-    default:  return { x, y };
-  }
-}
-
-// Voucher photos routinely have more than one code on them — the actual
-// redemption barcode plus unrelated marketing QR codes ("subscribe to our
-// newsletter", social links, etc.). zxing's single-shot decode just returns
-// whichever one it happens to find first, which is often the wrong one. This
-// scans every rotation, and after each hit, paints over that code and keeps
-// decoding the same frame so multiple distinct codes on one photo are all
-// found rather than just the first.
-// Repeatedly decodes `canvas`, masking out each found code so the next
-// attempt finds a different one, up to maxAttempts. Result points are in
-// the canvas's own pixel space; offsetX/offsetY/rotationDeg map them back
-// into the ORIGINAL full-resolution image's coordinate space before being
-// added to `candidates` (deduped against `seenTexts` by decoded text).
-function scanCanvasForCodes(reader, canvas, { rotationDeg = 0, offsetX = 0, offsetY = 0, imgW, imgH, maxAttempts, TWO_D_FORMATS, candidates, seenTexts }) {
+// Voucher photos sometimes have more than one QR code on them — the actual
+// redemption code plus an unrelated marketing one ("subscribe to our
+// newsletter", social links). zxing's single-shot decode just returns
+// whichever one it happens to find first. This masks out each hit and keeps
+// decoding the same frame so multiple distinct codes are all found, not just
+// the first — up to maxAttempts, deduped against `seenTexts` by text.
+//
+// QR only: 1D barcode scanning was both unreliable (zxing's row-sampling
+// only checks a handful of lines near the canvas's own center, so a barcode
+// that isn't centered/dominant in a full photo gets missed even though it
+// decodes fine in isolation) and expensive (rotation + multi-scale tiling to
+// compensate), which blocked the main thread long enough to also break the
+// AI extraction call running alongside it. QR's global finder-pattern search
+// is reliable and fast without any of that, so that's all this looks for.
+function scanCanvasForCodes(reader, canvas, { imgW, imgH, maxAttempts, candidates, seenTexts }) {
   const ctx = canvas.getContext('2d');
   for (let i = 0; i < maxAttempts; i++) {
     let result;
     try {
       result = reader.decodeFromCanvas(canvas);
     } catch {
-      return; // no (more) codes found in this canvas
+      return; // no (more) codes found
     }
     const points = (result.getResultPoints?.() || []).filter(Boolean);
     if (!points.length) return;
-    const cxs = points.map(p => p.getX());
-    const cys = points.map(p => p.getY());
+    const xs = points.map(p => p.getX());
+    const ys = points.map(p => p.getY());
 
     const text = result.getText?.() || '';
     if (!seenTexts.has(text)) {
       seenTexts.add(text);
-      // rotationDeg only applies to the whole-image pass (tiles are never
-      // rotated), so map rotation first, then add the tile's own offset.
-      const mapped = points.map(p => mapRotatedPoint(p.getX(), p.getY(), rotationDeg, imgW, imgH));
-      const mxs = mapped.map(p => p.x + offsetX), mys = mapped.map(p => p.y + offsetY);
       candidates.push({
         text,
-        is2D: TWO_D_FORMATS.has(result.getBarcodeFormat?.()),
-        x0: Math.min(...mxs), y0: Math.min(...mys),
-        x1: Math.max(...mxs), y1: Math.max(...mys),
+        x0: Math.min(...xs), y0: Math.min(...ys),
+        x1: Math.max(...xs), y1: Math.max(...ys),
       });
     }
 
-    // Mask this code out (in the canvas's own pixel space) so the next
-    // decode attempt on the same frame is forced to find a different one.
-    const mx0 = Math.max(0, Math.min(...cxs) - 6), my0 = Math.max(0, Math.min(...cys) - 6);
-    const mx1 = Math.min(canvas.width, Math.max(...cxs) + 6), my1 = Math.min(canvas.height, Math.max(...cys) + 6);
+    // Mask this code out so the next decode attempt finds a different one.
+    const mx0 = Math.max(0, Math.min(...xs) - 6), my0 = Math.max(0, Math.min(...ys) - 6);
+    const mx1 = Math.min(imgW, Math.max(...xs) + 6), my1 = Math.min(imgH, Math.max(...ys) + 6);
     ctx.fillStyle = '#808080';
     ctx.fillRect(mx0, my0, mx1 - mx0, my1 - my0);
-  }
-}
-
-// Splits baseCanvas into a grid of overlapping tiles and scans each one
-// independently, so a tile's own (smaller) dimensions give the decoder a
-// better shot at whatever region of the photo falls inside it.
-function runTiledScan(reader, baseCanvas, imgW, imgH, { grid, overlap, maxAttempts }, scanOpts) {
-  const stepX = imgW / grid, stepY = imgH / grid;
-  const tileW = Math.min(imgW, stepX * (1 + overlap));
-  const tileH = Math.min(imgH, stepY * (1 + overlap));
-  for (let ty = 0; ty < grid; ty++) {
-    for (let tx = 0; tx < grid; tx++) {
-      const x0 = Math.max(0, Math.min(imgW - tileW, tx * stepX - (tileW - stepX) / 2));
-      const y0 = Math.max(0, Math.min(imgH - tileH, ty * stepY - (tileH - stepY) / 2));
-      const w = Math.min(imgW - x0, tileW), h = Math.min(imgH - y0, tileH);
-      if (w < 60 || h < 60) continue;
-      const tileCanvas = document.createElement('canvas');
-      tileCanvas.width = w;
-      tileCanvas.height = h;
-      tileCanvas.getContext('2d').drawImage(baseCanvas, x0, y0, w, h, 0, 0, w, h);
-      scanCanvasForCodes(reader, tileCanvas, { ...scanOpts, offsetX: x0, offsetY: y0, maxAttempts });
-    }
   }
 }
 
@@ -786,52 +748,20 @@ async function findBarcodeCandidates(file, mimeType) {
     const { DecodeHintType, BarcodeFormat } = await import('@zxing/library');
     const img = await loadImageElement(objectUrl);
     const imgW = img.naturalWidth, imgH = img.naturalHeight;
-    const TWO_D_FORMATS = new Set([
-      BarcodeFormat.QR_CODE, BarcodeFormat.MICRO_QR_CODE,
-      BarcodeFormat.DATA_MATRIX, BarcodeFormat.AZTEC, BarcodeFormat.PDF_417, BarcodeFormat.MAXICODE,
-    ]);
 
     const hints = new Map();
     hints.set(DecodeHintType.TRY_HARDER, true);
     hints.set(DecodeHintType.ALSO_INVERTED, true);
+    hints.set(DecodeHintType.POSSIBLE_FORMATS, [BarcodeFormat.QR_CODE, BarcodeFormat.MICRO_QR_CODE]);
     const reader = new BrowserMultiFormatReader(hints);
 
-    const baseCanvas = document.createElement('canvas');
-    baseCanvas.width = imgW;
-    baseCanvas.height = imgH;
-    baseCanvas.getContext('2d').drawImage(img, 0, 0);
+    const canvas = document.createElement('canvas');
+    canvas.width = imgW;
+    canvas.height = imgH;
+    canvas.getContext('2d').drawImage(img, 0, 0);
 
     const candidates = [];
-    const seenTexts = new Set();
-    const scanOpts = { imgW, imgH, TWO_D_FORMATS, candidates, seenTexts };
-
-    // Pass 1 — whole image, a few rotations. Cheap, and reliably finds QR/2D
-    // codes anywhere (they use a global finder-pattern search) plus any 1D
-    // barcode that's large/centered enough to fall on a sampled scan row.
-    for (const rotationDeg of [0, 90, 270, 180]) {
-      const canvas = document.createElement('canvas');
-      const rotated = rotationDeg === 90 || rotationDeg === 270;
-      canvas.width  = rotated ? imgH : imgW;
-      canvas.height = rotated ? imgW : imgH;
-      const ctx = canvas.getContext('2d');
-      ctx.translate(canvas.width / 2, canvas.height / 2);
-      ctx.rotate((rotationDeg * Math.PI) / 180);
-      ctx.drawImage(baseCanvas, -imgW / 2, -imgH / 2);
-      ctx.setTransform(1, 0, 0, 1, 0, 0); // reset for scanCanvasForCodes' mask fillRects
-      scanCanvasForCodes(reader, canvas, { ...scanOpts, rotationDeg, maxAttempts: 4 });
-    }
-
-    // Pass 2 — tiled, at two scales. zxing's 1D-barcode decoder only samples
-    // a handful of scan lines near the canvas's own center — even a
-    // byte-identical, perfectly clean barcode can fail to decode purely
-    // because of the overall canvas size/position it's scanned at, and
-    // succeed at a different crop of the exact same pixels. There's no
-    // single tile size that reliably works, so this tries a coarse grid
-    // (for a barcode spanning a large fraction of the photo) and a finer
-    // grid (for a small, localized one), both generously overlapped so a
-    // barcode is never split across a tile boundary.
-    runTiledScan(reader, baseCanvas, imgW, imgH, { grid: 2, overlap: 0.55, maxAttempts: 3 }, scanOpts);
-    runTiledScan(reader, baseCanvas, imgW, imgH, { grid: 4, overlap: 0.3, maxAttempts: 2 }, scanOpts);
+    scanCanvasForCodes(reader, canvas, { imgW, imgH, maxAttempts: 6, candidates, seenTexts: new Set() });
 
     return { img, imgW, imgH, candidates };
   } catch (err) {
@@ -846,14 +776,11 @@ function normalizeCodeForCompare(s) {
   return (s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 }
 
-// Picks the most likely "this is the actual redemption code" candidate:
-// 1. Its decoded text matches the code the AI extraction already read off
-//    the same photo — the strongest possible signal when available.
-// 2. Otherwise prefer a 1D barcode over a QR/2D code — gift-card codes are
-//    almost always linear barcodes, while QR codes on a voucher are
-//    typically unrelated marketing (newsletter, social links, app store).
-// 3. Otherwise the largest code in the photo (marketing codes are usually
-//    smaller/secondary on the layout).
+// Picks the most likely "this is the actual redemption code" candidate when
+// a photo has more than one QR code on it: prefer whichever one's decoded
+// text matches the code the AI extraction already read off the same photo,
+// otherwise the largest code in the photo (marketing codes are usually
+// smaller/secondary on the layout).
 function pickBestBarcodeCandidate(candidates, referenceCode) {
   if (!candidates.length) return null;
   const normRef = normalizeCodeForCompare(referenceCode);
@@ -864,9 +791,7 @@ function pickBestBarcodeCandidate(candidates, referenceCode) {
     });
     if (match) return match;
   }
-  const oneD = candidates.filter(c => !c.is2D);
-  const pool = oneD.length ? oneD : candidates;
-  return pool.slice().sort((a, b) => ((b.x1 - b.x0) * (b.y1 - b.y0)) - ((a.x1 - a.x0) * (a.y1 - a.y0)))[0];
+  return candidates.slice().sort((a, b) => ((b.x1 - b.x0) * (b.y1 - b.y0)) - ((a.x1 - a.x0) * (a.y1 - a.y0)))[0];
 }
 
 async function cropBarcodeCandidate(img, imgW, imgH, candidate) {
@@ -988,7 +913,7 @@ function showScanLoadingScreen() {
   el.innerHTML = `
     <div class="scan-spinner"></div>
     <h3>Reading your voucher…</h3>
-    <p>Detecting the brand, value, code and barcode from your photo.</p>
+    <p>Detecting the brand, value, code and QR code from your photo.</p>
     <button type="button" class="scan-skip" id="scan-skip-btn">Skip &amp; enter manually</button>
   `;
   document.body.appendChild(el);
@@ -1024,7 +949,7 @@ async function startVoucherScan(file, mimeType) {
       if (!fields) {
         showToast('Could not auto-read this file — please fill in manually.');
       } else if (!barcode) {
-        showToast('Auto-filled — no scannable barcode or QR code found in this photo.');
+        showToast('Auto-filled — no scannable QR code found in this photo.');
       } else {
         showToast('Auto-filled from your photo — please check the details before saving.');
       }
@@ -1939,8 +1864,8 @@ function barcodeTileHtml({ path, previewUrl }) {
 function barcodePreviewHtml(v) {
   if (pendingBarcode) return barcodeTileHtml({ previewUrl: pendingBarcode.previewUrl });
   if (v?.barcodePath && !barcodeRemoved) return barcodeTileHtml({ path: v.barcodePath });
-  if (barcodeScanState === 'scanning') return `<div class="barcode-scanning"><div class="scan-spinner-sm"></div><span>Scanning for a barcode…</span></div>`;
-  if (barcodeScanState === 'missing') return `<p class="barcode-not-found">No barcode or QR code found in this photo.</p>`;
+  if (barcodeScanState === 'scanning') return `<div class="barcode-scanning"><div class="scan-spinner-sm"></div><span>Scanning for a QR code…</span></div>`;
+  if (barcodeScanState === 'missing') return `<p class="barcode-not-found">No QR code found in this photo.</p>`;
   return '';
 }
 
@@ -1962,7 +1887,7 @@ function viewVoucherForm() {
     <form id="form-voucher" autocomplete="off">
       ${v ? `<input type="hidden" name="voucherId" value="${esc(v.id)}">` : ''}
       <div class="form-group" id="barcode-group" ${barcodeGroupVisible(v) ? '' : 'style="display:none"'}>
-        <label>Barcode / QR Code</label>
+        <label>QR Code</label>
         <div id="barcode-preview">${barcodePreviewHtml(v)}</div>
         <span class="form-hint">Auto-detected from your photo — shown at the top of this voucher for quick scanning</span>
       </div>

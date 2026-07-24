@@ -3668,17 +3668,82 @@ async function handleSubmit(e) {
 // in-memory state) because an unauthenticated visitor has to go through
 // signup — often including an email-confirmation round trip that reloads
 // the page — before there's a session to claim it with.
+// Gift box opens -> confetti bursts -> the voucher card is revealed. Resolves
+// once the user dismisses it, so the caller's normal fetchVouchers()/render()
+// flow only continues afterward — by the time it's gone, the voucher is
+// already sitting in the wallet like any other.
+function showGiftRevealAnimation(voucher) {
+  return new Promise(resolve => {
+    const overlay = document.createElement('div');
+    overlay.className = 'gift-reveal-overlay';
+    overlay.innerHTML = `
+      <div class="gift-reveal-stage">
+        <div class="confetti-layer" id="gift-confetti"></div>
+        <div class="gift-box" id="gift-reveal-box">
+          <div class="gift-box-lid"><div class="gift-box-bow"></div></div>
+          <div class="gift-box-base"><div class="gift-box-ribbon"></div></div>
+        </div>
+        <div class="gift-reveal-card" id="gift-reveal-card">
+          <div class="gift-reveal-card-brand">${esc(voucher.brand)}</div>
+          <div class="gift-reveal-card-value">${formatCurrency(voucher.value, voucher.currency)}</div>
+        </div>
+      </div>
+      <h3 class="gift-reveal-caption">You received a gift!</h3>
+      <p class="gift-reveal-subcaption">${esc(voucher.brand)} is now in your wallet.</p>
+      <button type="button" class="btn btn-primary gift-reveal-continue" id="gift-reveal-continue" style="visibility:hidden">Awesome!</button>
+    `;
+    document.body.appendChild(overlay);
+
+    const confettiLayer = overlay.querySelector('#gift-confetti');
+    const colors = ['#13B5A2', '#F98513', '#2BD4BE', '#D6710A', '#FFFFFF'];
+    for (let i = 0; i < 44; i++) {
+      const piece = document.createElement('div');
+      piece.className = 'confetti-piece';
+      const angle = Math.random() * Math.PI * 2;
+      const distance = 90 + Math.random() * 160;
+      piece.style.setProperty('--x', `${Math.cos(angle) * distance}px`);
+      piece.style.setProperty('--y', `${Math.sin(angle) * distance - 40}px`);
+      piece.style.setProperty('--rot', `${Math.random() * 720 - 360}deg`);
+      piece.style.setProperty('--delay', `${Math.random() * 0.15}s`);
+      piece.style.background = colors[i % colors.length];
+      confettiLayer.appendChild(piece);
+    }
+
+    const boxEl  = overlay.querySelector('#gift-reveal-box');
+    const cardEl = overlay.querySelector('#gift-reveal-card');
+    const continueBtn = overlay.querySelector('#gift-reveal-continue');
+
+    setTimeout(() => boxEl.classList.add('open'), 450);
+    setTimeout(() => confettiLayer.classList.add('burst'), 500);
+    setTimeout(() => cardEl.classList.add('revealed'), 850);
+    setTimeout(() => { continueBtn.style.visibility = ''; }, 1600);
+
+    const finish = () => { overlay.remove(); resolve(); };
+    continueBtn.addEventListener('click', finish);
+    overlay.addEventListener('click', e => { if (e.target === overlay) finish(); });
+  });
+}
+
 async function tryClaimPendingGift() {
   const giftId = localStorage.getItem('pendingGiftId');
   if (!giftId || !state.currentUser) return;
   localStorage.removeItem('pendingGiftId'); // clear regardless of outcome — avoid retry loops on a dead link
-  const { error } = await supabase.rpc('claim_voucher_gift', { p_gift_id: giftId });
+  const { data: voucherId, error } = await supabase.rpc('claim_voucher_gift', { p_gift_id: giftId });
   if (error) {
     console.error('claim_voucher_gift error:', error);
     setTimeout(() => showToast(error.message || 'This gift link is no longer valid'), 300);
     return;
   }
-  setTimeout(() => showToast('🎁 You received a voucher from a friend!'), 300);
+  const { data: row, error: fetchErr } = await supabase
+    .from('vouchers')
+    .select('brand, amount, currency')
+    .eq('id', voucherId)
+    .maybeSingle();
+  if (fetchErr || !row) {
+    setTimeout(() => showToast('🎁 You received a voucher from a friend!'), 300);
+    return;
+  }
+  await showGiftRevealAnimation({ brand: row.brand, value: row.amount, currency: row.currency });
 }
 
 async function init() {

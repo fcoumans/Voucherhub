@@ -283,3 +283,75 @@ CREATE POLICY "extraction_log_select" ON public.voucher_extraction_log
 
 CREATE POLICY "extraction_log_insert" ON public.voucher_extraction_log
   FOR INSERT TO authenticated WITH CHECK (user_id = auth.uid());
+
+-- ============================================================
+-- public.voucher_gifts  (send a voucher to a friend via a claim
+-- link/QR code, even before they have an account)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS public.voucher_gifts (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  voucher_id UUID NOT NULL REFERENCES public.vouchers(id) ON DELETE CASCADE,
+  sender_id  UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  status     TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'claimed', 'cancelled')),
+  claimed_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+  claimed_at TIMESTAMPTZ,
+  expires_at TIMESTAMPTZ NOT NULL DEFAULT (now() + interval '30 days'),
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- At most one active pending gift per voucher at a time.
+CREATE UNIQUE INDEX IF NOT EXISTS voucher_gifts_one_pending_per_voucher
+  ON public.voucher_gifts (voucher_id) WHERE status = 'pending';
+
+GRANT SELECT, INSERT, UPDATE ON public.voucher_gifts TO authenticated;
+ALTER TABLE public.voucher_gifts ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "voucher_gifts_select" ON public.voucher_gifts;
+DROP POLICY IF EXISTS "voucher_gifts_insert" ON public.voucher_gifts;
+DROP POLICY IF EXISTS "voucher_gifts_update" ON public.voucher_gifts;
+
+CREATE POLICY "voucher_gifts_select" ON public.voucher_gifts
+  FOR SELECT TO authenticated USING (sender_id = auth.uid());
+
+CREATE POLICY "voucher_gifts_insert" ON public.voucher_gifts
+  FOR INSERT TO authenticated WITH CHECK (
+    sender_id = auth.uid()
+    AND EXISTS (SELECT 1 FROM public.vouchers v WHERE v.id = voucher_id AND v.user_id = auth.uid())
+  );
+
+CREATE POLICY "voucher_gifts_update" ON public.voucher_gifts
+  FOR UPDATE TO authenticated USING (sender_id = auth.uid()) WITH CHECK (sender_id = auth.uid());
+
+-- SECURITY DEFINER: the recipient isn't the voucher's owner yet, so the
+-- ownership transfer below can't happen under the normal owner-scoped RLS
+-- policies on vouchers/voucher_files — this function runs with elevated
+-- privilege but still resolves auth.uid() from the caller's own session.
+CREATE OR REPLACE FUNCTION public.claim_voucher_gift(p_gift_id UUID)
+RETURNS UUID
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $$
+DECLARE v_gift RECORD;
+BEGIN
+  SELECT * INTO v_gift FROM public.voucher_gifts
+    WHERE id = p_gift_id AND status = 'pending' AND expires_at > now()
+    FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'This gift link is no longer valid' USING ERRCODE = 'P0001';
+  END IF;
+  IF v_gift.sender_id = auth.uid() THEN
+    RAISE EXCEPTION 'You cannot claim your own gift' USING ERRCODE = 'P0002';
+  END IF;
+
+  UPDATE public.vouchers SET user_id = auth.uid() WHERE id = v_gift.voucher_id;
+  -- voucher_files RLS is user_id-scoped too (select/insert/update/delete all
+  -- `user_id = auth.uid()`) — without this, the new owner couldn't see the
+  -- attached photos/barcode crop that came with the voucher.
+  UPDATE public.voucher_files SET user_id = auth.uid() WHERE voucher_id = v_gift.voucher_id;
+  UPDATE public.voucher_gifts SET status = 'claimed', claimed_by = auth.uid(), claimed_at = now()
+    WHERE id = v_gift.id;
+
+  RETURN v_gift.voucher_id;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.claim_voucher_gift(UUID) TO authenticated;

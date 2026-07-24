@@ -1500,6 +1500,69 @@ p { line-height: 1.5; }
 
 .dialog-actions .btn { flex: 1; }
 
+.pending-gifts-pill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  background: var(--primary-light);
+  color: var(--primary-dark);
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-align: left;
+  margin-bottom: 12px;
+  cursor: pointer;
+}
+
+.gift-qr-wrap {
+  display: flex;
+  justify-content: center;
+  background: #fff;
+  border-radius: var(--radius-sm);
+  padding: 16px;
+  margin: 16px 0;
+}
+
+.gift-qr-wrap img {
+  width: 200px;
+  height: 200px;
+  display: block;
+}
+
+.gift-link-row {
+  display: flex;
+  gap: 8px;
+}
+
+.gift-link-row input {
+  flex: 1;
+  min-width: 0;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+  background: var(--bg);
+}
+
+.gift-waiting-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: var(--primary-light);
+  color: var(--primary-dark);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-align: center;
+  margin-bottom: 16px;
+}
+
 .scan-loading {
   position: fixed;
   inset: 0;

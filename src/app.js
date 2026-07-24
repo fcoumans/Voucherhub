@@ -27,6 +27,7 @@ const state = {
   pendingRequests: [],   // incoming friend requests { id, requesterId, name, email }
   reminders:  [],   // notifications rows
   voucherFiles: [],  // voucher_files rows for the voucher currently open (form or detail)
+  pendingGifts: [],  // voucher_gifts rows this user has sent that are still unclaimed
   searchQuery: '',
   activeFilter: 'active',
   activeSort: 'expiry',
@@ -263,6 +264,18 @@ async function fetchVouchers() {
   state.vouchers = (data || []).map(mapVoucher);
 }
 
+async function fetchPendingGifts() {
+  if (!state.currentUser) return;
+  const { data, error } = await supabase
+    .from('voucher_gifts')
+    .select('id, voucher_id, created_at, expires_at')
+    .eq('sender_id', state.currentUser.id)
+    .eq('status', 'pending')
+    .order('created_at', { ascending: false });
+  if (error) { console.error('fetchPendingGifts error:', error); return; }
+  state.pendingGifts = data || [];
+}
+
 async function fetchBrands() {
   const { data, error } = await supabase
     .from('brands')
@@ -495,10 +508,13 @@ async function go(view, params = {}) {
     case 'home':
       // vouchers first so mapReminder can look up brand names
       await fetchVouchers();
-      await Promise.all([fetchReminders(), fetchListings(), fetchFriendIds(), fetchPendingRequests()]);
+      await Promise.all([fetchReminders(), fetchListings(), fetchFriendIds(), fetchPendingRequests(), fetchPendingGifts()]);
       break;
     case 'vouchers':
-      await fetchVouchers();
+      await Promise.all([fetchVouchers(), fetchPendingGifts()]);
+      break;
+    case 'pending-gifts':
+      await Promise.all([fetchVouchers(), fetchPendingGifts()]);
       break;
     case 'voucher-detail':
       await Promise.all([fetchVouchers(), fetchReminders()]);
@@ -550,7 +566,7 @@ async function go(view, params = {}) {
       await Promise.all([fetchFriends(), fetchPendingRequests()]);
       break;
     case 'profile':
-      await Promise.all([fetchVouchers(), fetchListings(), fetchFriendIds(), fetchPendingRequests()]);
+      await Promise.all([fetchVouchers(), fetchListings(), fetchFriendIds(), fetchPendingRequests(), fetchPendingGifts()]);
       await fetchReferrals();
       break;
   }
@@ -565,6 +581,7 @@ async function login(email, password) {
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
   if (error) return error.message;
   state.currentUser = mapUser(data.user);
+  await tryClaimPendingGift();
   go('home');
   return null;
 }
@@ -592,6 +609,7 @@ async function register(name, email, password) {
     return null;
   }
   state.currentUser = mapUser(data.user);
+  await tryClaimPendingGift();
   go('home');
   return null;
 }
@@ -1050,6 +1068,86 @@ async function unlist(id) {
   go('voucher-detail', { id });
 }
 
+/* ============================================================
+   VOUCHER GIFTING (send to a friend, even without an account —
+   see claim_voucher_gift RPC and init()'s ?gift= handling)
+   ============================================================ */
+async function sendVoucherGift(id) {
+  const v = state.vouchers.find(x => x.id === id);
+  if (!v) return;
+  const { data, error } = await supabase
+    .from('voucher_gifts')
+    .insert({ voucher_id: id, sender_id: state.currentUser.id })
+    .select('id')
+    .single();
+  if (error) { console.error('sendVoucherGift error:', error); showToast('Error creating gift link'); return; }
+  showGiftShareScreen(data.id, v);
+}
+
+async function cancelVoucherGift(giftId) {
+  const { error } = await supabase.from('voucher_gifts').update({ status: 'cancelled' }).eq('id', giftId);
+  if (error) { console.error('cancelVoucherGift error:', error); showToast('Error cancelling gift'); return; }
+  showToast('Gift cancelled — voucher is back in your wallet');
+  go('pending-gifts');
+}
+
+// Shows the QR code + shareable link for a gift. Reused both right after
+// creating a gift and from the Pending Gifts list ("Link" button).
+async function showGiftShareScreen(giftId, voucher) {
+  const claimUrl = `${window.location.origin}/?gift=${giftId}`;
+  const overlay = document.createElement('div');
+  overlay.className = 'overlay';
+  overlay.innerHTML = `
+  <div class="dialog">
+    <h3>Send ${esc(voucher.brand)} to a friend</h3>
+    <p>Have them scan this code, or share the link. Anyone with this link can claim it — only share it with your friend.</p>
+    <div class="gift-qr-wrap"><img id="gift-qr-img" alt="QR code to claim this voucher"></div>
+    <div class="gift-link-row">
+      <input type="text" readonly value="${esc(claimUrl)}" id="gift-link-input">
+      <button type="button" class="btn btn-secondary btn-sm" id="gift-copy-btn">${icon.copy} Copy</button>
+    </div>
+    <div class="dialog-actions" style="margin-top:16px">
+      ${typeof navigator.share === 'function' ? `<button type="button" class="btn btn-primary" id="gift-share-btn">Share</button>` : ''}
+      <button type="button" class="btn btn-ghost" id="gift-done-btn">Done</button>
+    </div>
+  </div>`;
+  document.body.appendChild(overlay);
+
+  const closeAndGo = () => { overlay.remove(); go('pending-gifts'); };
+  overlay.querySelector('#gift-done-btn').addEventListener('click', closeAndGo);
+  overlay.addEventListener('click', e => { if (e.target === overlay) closeAndGo(); });
+
+  overlay.querySelector('#gift-copy-btn').addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(claimUrl);
+      showToast('Link copied');
+    } catch {
+      showToast('Could not copy link');
+    }
+  });
+
+  const shareBtn = overlay.querySelector('#gift-share-btn');
+  if (shareBtn) {
+    shareBtn.addEventListener('click', async () => {
+      try {
+        await navigator.share({ title: 'A gift voucher for you', text: `I'm sending you a ${voucher.brand} voucher!`, url: claimUrl });
+      } catch {
+        // user cancelled the share sheet — not an error
+      }
+    });
+  }
+
+  try {
+    const qrModule = await import('qrcode');
+    const QRCode = qrModule.default || qrModule;
+    const dataUrl = await QRCode.toDataURL(claimUrl, { margin: 1, width: 240 });
+    const img = document.getElementById('gift-qr-img');
+    if (img) img.src = dataUrl;
+  } catch (err) {
+    console.error('gift QR generation error:', err);
+  }
+}
+
 async function deductBalance(id, amount) {
   const v = state.vouchers.find(x => x.id === id);
   if (!v) return;
@@ -1411,6 +1509,7 @@ const icon = {
   plus2:  `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>`,
   camera: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>`,
   file:   `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>`,
+  gift:   `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5"/><line x1="12" y1="22" x2="12" y2="7"/><path d="M12 7H7.5a2.5 2.5 0 010-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 000-5C13 2 12 7 12 7z"/></svg>`,
 };
 
 const navIcons = {
@@ -1579,6 +1678,10 @@ function viewAuth() {
       <h1><span style="color:#11233F">Voucher</span><span style="color:#13B5A2">Wise</span></h1>
       <p>Unlock the full value of every voucher you own.</p>
     </div>
+
+    ${localStorage.getItem('pendingGiftId') ? `
+    <div class="gift-waiting-banner">${icon.gift} You have a gift waiting — log in or sign up to claim it!</div>
+    ` : ''}
 
     <div class="auth-tabs">
       <button class="auth-tab ${tab === 'login' ? 'active' : ''}" data-nav="auth" data-tab="login">Log In</button>
@@ -1753,7 +1856,10 @@ function viewVouchers() {
   const q      = state.searchQuery.toLowerCase();
   const filter = state.activeFilter;
   const sort   = state.activeSort;
-  let vouchers = state.vouchers.slice();
+  // Vouchers with a pending gift are hidden from the normal wallet — they
+  // live in the Pending Gifts list until claimed or cancelled.
+  const giftedIds = new Set(state.pendingGifts.map(g => g.voucher_id));
+  let vouchers = state.vouchers.filter(v => !giftedIds.has(v.id));
 
   if (q) vouchers = vouchers.filter(v => v.brand.toLowerCase().includes(q) || (v.code||'').toLowerCase().includes(q));
   if (filter !== 'all') vouchers = vouchers.filter(v => {
@@ -1788,7 +1894,7 @@ function viewVouchers() {
     });
   }
 
-  const allV   = state.vouchers;
+  const allV   = state.vouchers.filter(v => !giftedIds.has(v.id));
   const counts = { all: allV.length, active: 0, expiring: 0, expired: 0, used: 0, listed: 0 };
   allV.forEach(v => {
     const s = getStatus(v);
@@ -1803,6 +1909,12 @@ function viewVouchers() {
       <span class="search-icon">${icon.search}</span>
       <input type="search" placeholder="Search brand, code…" value="${esc(state.searchQuery)}" data-search="vouchers">
     </div>
+
+    ${state.pendingGifts.length > 0 ? `
+    <button type="button" class="pending-gifts-pill" data-nav="pending-gifts">
+      ${icon.gift} ${state.pendingGifts.length} pending gift${state.pendingGifts.length !== 1 ? 's' : ''} — waiting to be claimed
+    </button>
+    ` : ''}
 
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
       <div class="filter-chips" style="flex:1;margin-bottom:0">
@@ -1833,6 +1945,41 @@ function viewVouchers() {
     }
   </main>
   <button class="fab" data-action="add-voucher-menu" title="Add voucher">${icon.plus}</button>
+  ${renderBottomNav()}`;
+}
+
+/* ============================================================
+   VIEW: PENDING GIFTS
+   ============================================================ */
+function viewPendingGifts() {
+  const rows = state.pendingGifts.map(g => {
+    const v = state.vouchers.find(x => x.id === g.voucher_id);
+    if (!v) return '';
+    return `
+    <div class="card" style="margin-bottom:10px;padding:14px">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+        <div>
+          <div style="font-weight:700">${esc(v.brand)}</div>
+          <div class="text-muted text-xs">${formatCurrency(v.value, v.currency)} — sent ${formatDate(g.created_at?.slice(0, 10))}</div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button type="button" class="btn btn-secondary btn-sm" data-action="show-gift-qr" data-id="${esc(g.id)}" data-voucher-id="${esc(v.id)}">${icon.link} Link</button>
+          <button type="button" class="btn btn-ghost btn-sm" data-action="cancel-gift" data-id="${esc(g.id)}">${icon.trash} Cancel</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+
+  return `
+  ${renderHeader('Pending Gifts', 'vouchers')}
+  <main class="content">
+    <p class="text-muted text-xs" style="margin-bottom:14px">Vouchers you've sent that a friend hasn't claimed yet. Cancel to bring one back into your wallet.</p>
+    ${rows || `<div class="empty-state">
+      <div class="empty-icon">${icon.gift}</div>
+      <h3>No pending gifts</h3>
+      <p>Open a voucher and tap "Gift" to send it to a friend.</p>
+    </div>`}
+  </main>
   ${renderBottomNav()}`;
 }
 
@@ -2095,6 +2242,10 @@ function viewVoucherDetail() {
         : (s === 'active' || s === 'expiring')
           ? `<button class="btn btn-secondary" data-action="show-sell" data-id="${esc(id)}">${icon.tag} Sell</button>`
           : ''
+      }
+      ${s === 'active' || s === 'expiring'
+        ? `<button class="btn btn-secondary" data-action="send-gift" data-id="${esc(id)}">${icon.gift} Gift</button>`
+        : ''
       }
     </div>
 
@@ -2678,6 +2829,10 @@ function viewProfile() {
           <div class="si-subtitle">${state.friendIds.length} friends${state.pendingRequests.length > 0 ? ` · <span style="color:#e53e3e;font-weight:600">${state.pendingRequests.length} pending</span>` : ''}</div>
         </div>
       </button>
+      <button class="settings-item" data-nav="pending-gifts">
+        <div class="si-icon" style="background:#CFF1E8;color:#13B5A2">${icon.gift}</div>
+        <div class="si-text"><div class="si-title">Pending Gifts</div><div class="si-subtitle">${state.pendingGifts.length} waiting to be claimed</div></div>
+      </button>
     </div>
 
     <div class="settings-list" style="margin-top:16px">
@@ -2850,6 +3005,7 @@ const VIEWS = {
   'reset-password':  viewResetPassword,
   home:             viewHome,
   vouchers:         viewVouchers,
+  'pending-gifts':  viewPendingGifts,
   'voucher-form':   viewVoucherForm,
   'voucher-detail': viewVoucherDetail,
   marketplace:      viewMarketplace,
@@ -3095,6 +3251,26 @@ async function handleAction(el, e) {
     case 'unlist':
       showConfirm({ title: 'Remove Listing?', message: 'Your voucher will be removed from the marketplace.', confirmLabel: 'Remove', onConfirm: () => unlist(id) });
       break;
+
+    case 'send-gift':
+      showConfirm({
+        title: 'Send this voucher?',
+        message: "It'll leave your wallet and you'll get a QR code / link to share — your friend receives it the moment they claim it, even if they don't have an account yet.",
+        confirmLabel: 'Send',
+        confirmClass: 'btn-primary',
+        onConfirm: () => sendVoucherGift(id),
+      });
+      break;
+
+    case 'cancel-gift':
+      showConfirm({ title: 'Cancel this gift?', message: 'The voucher will move back into your wallet and the link will stop working.', confirmLabel: 'Cancel Gift', onConfirm: () => cancelVoucherGift(id) });
+      break;
+
+    case 'show-gift-qr': {
+      const v = state.vouchers.find(x => x.id === el.dataset.voucherId);
+      if (v) showGiftShareScreen(id, v);
+      break;
+    }
 
     case 'confirm-delete':
       showConfirm({ title: 'Delete Voucher?', message: 'This cannot be undone.', confirmLabel: 'Delete', onConfirm: () => deleteVoucher(id) });
@@ -3488,8 +3664,25 @@ async function handleSubmit(e) {
 /* ============================================================
    INIT
    ============================================================ */
+// Redeems a voucher gift link. The id is stashed in localStorage (not just
+// in-memory state) because an unauthenticated visitor has to go through
+// signup — often including an email-confirmation round trip that reloads
+// the page — before there's a session to claim it with.
+async function tryClaimPendingGift() {
+  const giftId = localStorage.getItem('pendingGiftId');
+  if (!giftId || !state.currentUser) return;
+  localStorage.removeItem('pendingGiftId'); // clear regardless of outcome — avoid retry loops on a dead link
+  const { error } = await supabase.rpc('claim_voucher_gift', { p_gift_id: giftId });
+  if (error) {
+    console.error('claim_voucher_gift error:', error);
+    setTimeout(() => showToast(error.message || 'This gift link is no longer valid'), 300);
+    return;
+  }
+  setTimeout(() => showToast('🎁 You received a voucher from a friend!'), 300);
+}
+
 async function init() {
-  // Detect email confirmation / password-reset link in URL
+  // Detect email confirmation / password-reset / gift-claim links in URL
   const urlSearch = new URLSearchParams(window.location.search);
   const urlHash   = new URLSearchParams(window.location.hash.replace('#', '?'));
   const confirmType = urlSearch.get('type') || urlHash.get('type');
@@ -3497,7 +3690,9 @@ async function init() {
   const isRecovery    = confirmType === 'recovery';
   const authError     = urlHash.get('error') || urlSearch.get('error');
   const authErrorDesc = urlHash.get('error_description') || urlSearch.get('error_description');
-  if (isEmailConfirm || isRecovery || authError) window.history.replaceState(null, '', '/');
+  const giftId        = urlSearch.get('gift') || urlHash.get('gift');
+  if (giftId) localStorage.setItem('pendingGiftId', giftId);
+  if (isEmailConfirm || isRecovery || authError || giftId) window.history.replaceState(null, '', '/');
 
   const { data: { session } } = await supabase.auth.getSession();
   if (isRecovery && session) {
@@ -3506,9 +3701,10 @@ async function init() {
   } else if (session) {
     state.currentUser = mapUser(session.user);
     state.view = 'home';
+    await tryClaimPendingGift();
     // vouchers first so mapReminder can look up brand names
     await fetchVouchers();
-    await Promise.all([fetchBrands(), fetchListings(), fetchFriendIds(), fetchPendingRequests(), fetchReminders()]);
+    await Promise.all([fetchBrands(), fetchListings(), fetchFriendIds(), fetchPendingRequests(), fetchReminders(), fetchPendingGifts()]);
   } else if (authError) {
     state.view = 'forgot-password';
   } else {
@@ -3538,8 +3734,9 @@ async function init() {
     if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session && !state.currentUser && state.view !== 'reset-password') {
       state.currentUser = mapUser(session.user);
       state.view = 'home';
+      await tryClaimPendingGift();
       await fetchVouchers();
-      await Promise.all([fetchBrands(), fetchListings(), fetchFriendIds(), fetchPendingRequests(), fetchReminders()]);
+      await Promise.all([fetchBrands(), fetchListings(), fetchFriendIds(), fetchPendingRequests(), fetchReminders(), fetchPendingGifts()]);
       render();
       if (isEmailConfirm) {
         setTimeout(() => showToast('Email confirmed — welcome to VoucherWise!'), 300);

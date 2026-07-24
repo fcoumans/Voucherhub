@@ -475,6 +475,38 @@ p { line-height: 1.5; }
   justify-content: center;
 }
 
+.barcode-scanning {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 16px;
+  border-radius: var(--radius-sm);
+  border: 1.5px dashed var(--border);
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+
+.scan-spinner-sm {
+  width: 18px;
+  height: 18px;
+  border: 3px solid var(--primary-light);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: scanSpin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
+.barcode-not-found {
+  padding: 14px;
+  border-radius: var(--radius-sm);
+  border: 1.5px dashed var(--border);
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  text-align: center;
+  margin: 0;
+}
+
 .barcode-display img {
   max-width: 100%;
   max-height: 170px;

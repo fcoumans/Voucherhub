@@ -530,6 +530,7 @@ async function go(view, params = {}) {
         pendingBarcode           = null;
         barcodeRemoved           = false;
         pendingExtractionResult  = null;
+        barcodeScanState         = null;
       }
       await Promise.all([fetchVouchers(), fetchBrands()]);
       state.voucherFiles = params.id ? await fetchVoucherFiles(params.id) : [];
@@ -790,17 +791,28 @@ async function detectBarcodeCrop(file, mimeType) {
 // Only auto-fills the barcode slot if it's currently empty, mirroring the
 // "pre-fill, never clobber" rule used for the AI text fields — an explicit
 // remove always wins over a later auto-detect from another photo.
-async function maybeAutoDetectBarcode(file, mimeType, existingBarcodePath) {
-  if (pendingBarcode || barcodeRemoved || existingBarcodePath) return;
-  const found = await detectBarcodeCrop(file, mimeType);
-  if (!found || pendingBarcode || barcodeRemoved) return; // re-check: state may have changed while awaiting
-  pendingBarcode = found;
+function renderBarcodeGroupNow(v) {
   const group = document.getElementById('barcode-group');
   const preview = document.getElementById('barcode-preview');
-  if (group && preview) {
-    group.style.display = '';
-    preview.innerHTML = barcodeTileHtml({ previewUrl: found.previewUrl });
-  }
+  if (!group || !preview) return;
+  group.style.display = barcodeGroupVisible(v) ? '' : 'none';
+  preview.innerHTML = barcodePreviewHtml(v);
+}
+
+async function maybeAutoDetectBarcode(file, mimeType, existingBarcodePath) {
+  if (pendingBarcode || barcodeRemoved || existingBarcodePath) return;
+
+  // Visible immediately — so adding a photo always shows *something* is
+  // happening, instead of the barcode section staying silent either way.
+  barcodeScanState = 'scanning';
+  renderBarcodeGroupNow(state.vouchers.find(x => x.id === state.params.id));
+
+  const found = await detectBarcodeCrop(file, mimeType);
+  if (pendingBarcode || barcodeRemoved) return; // state changed while awaiting (e.g. user removed manually)
+
+  barcodeScanState = found ? null : 'missing';
+  if (found) pendingBarcode = found;
+  renderBarcodeGroupNow(state.vouchers.find(x => x.id === state.params.id));
 }
 
 /* ============================================================
@@ -899,6 +911,7 @@ async function startVoucherScan(file, mimeType) {
     pendingExtractionFile   = { file, mimeType };
     pendingExtractionResult = fields;
     pendingBarcode           = barcode;
+    barcodeScanState         = silent ? null : (barcode ? null : 'missing');
     go('voucher-form').then(() => {
       if (silent) return;
       if (!fields) {
@@ -1807,6 +1820,21 @@ function barcodeTileHtml({ path, previewUrl }) {
   </div>`;
 }
 
+// Shared by the initial template render and the imperative DOM updates in
+// maybeAutoDetectBarcode/startVoucherScan, so a scan's status (in progress /
+// found / not found) is never just... silent, wherever it's triggered from.
+function barcodePreviewHtml(v) {
+  if (pendingBarcode) return barcodeTileHtml({ previewUrl: pendingBarcode.previewUrl });
+  if (v?.barcodePath && !barcodeRemoved) return barcodeTileHtml({ path: v.barcodePath });
+  if (barcodeScanState === 'scanning') return `<div class="barcode-scanning"><div class="scan-spinner-sm"></div><span>Scanning for a barcode…</span></div>`;
+  if (barcodeScanState === 'missing') return `<p class="barcode-not-found">No barcode or QR code found in this photo.</p>`;
+  return '';
+}
+
+function barcodeGroupVisible(v) {
+  return !!(pendingBarcode || (v?.barcodePath && !barcodeRemoved) || barcodeScanState);
+}
+
 /* ============================================================
    VIEW: VOUCHER FORM (add / edit)
    ============================================================ */
@@ -1820,13 +1848,9 @@ function viewVoucherForm() {
   <main class="content">
     <form id="form-voucher" autocomplete="off">
       ${v ? `<input type="hidden" name="voucherId" value="${esc(v.id)}">` : ''}
-      <div class="form-group" id="barcode-group" ${(!pendingBarcode && !(v?.barcodePath && !barcodeRemoved)) ? 'style="display:none"' : ''}>
+      <div class="form-group" id="barcode-group" ${barcodeGroupVisible(v) ? '' : 'style="display:none"'}>
         <label>Barcode / QR Code</label>
-        <div id="barcode-preview">
-          ${pendingBarcode
-            ? barcodeTileHtml({ previewUrl: pendingBarcode.previewUrl })
-            : (v?.barcodePath && !barcodeRemoved ? barcodeTileHtml({ path: v.barcodePath }) : '')}
-        </div>
+        <div id="barcode-preview">${barcodePreviewHtml(v)}</div>
         <span class="form-hint">Auto-detected from your photo — shown at the top of this voucher for quick scanning</span>
       </div>
 
@@ -2858,6 +2882,7 @@ let pendingExtractionEntry  = null; // the pendingNewFiles entry whose AI-extrac
 let pendingExtractionResult = null; // fields already resolved by startVoucherScan, applied on the next voucher-form render
 let pendingBarcode  = null; // { blob, previewUrl } newly detected barcode/QR crop, not yet uploaded
 let barcodeRemoved  = false; // true if the user removed the current/existing barcode this session
+let barcodeScanState = null; // null | 'scanning' | 'missing' — shown inline so a failed/in-progress scan is never silent
 
 function showBrandSuggestions(value) {
   const el = document.getElementById('brand-suggestions');
@@ -3073,12 +3098,10 @@ async function handleAction(el, e) {
     case 'remove-barcode': {
       e.preventDefault();
       if (pendingBarcode?.previewUrl) URL.revokeObjectURL(pendingBarcode.previewUrl);
-      pendingBarcode = null;
-      barcodeRemoved = true;
-      const group = document.getElementById('barcode-group');
-      const preview = document.getElementById('barcode-preview');
-      if (preview) preview.innerHTML = '';
-      if (group) group.style.display = 'none';
+      pendingBarcode   = null;
+      barcodeRemoved   = true;
+      barcodeScanState = null;
+      renderBarcodeGroupNow(state.vouchers.find(x => x.id === state.params.id));
       break;
     }
 

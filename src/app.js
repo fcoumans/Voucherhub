@@ -49,7 +49,7 @@ const esc = (str) =>
     .replace(/"/g, '&quot;');
 
 const formatDate = (dateStr) => {
-  if (!dateStr) return '—';
+  if (!dateStr) return 'N/A';
   const [y, m, d] = dateStr.split('-').map(Number);
   return new Date(y, m - 1, d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 };
@@ -340,10 +340,10 @@ async function fetchFriends() {
     .in('id', state.friendIds);
   if (error) {
     console.error('fetchFriends profiles error:', error);
-    state.friends = state.friendIds.map(id => ({ id, name: 'Friend', email: '—' }));
+    state.friends = state.friendIds.map(id => ({ id, name: 'Friend', email: 'N/A' }));
     return;
   }
-  state.friends = (data || []).map(p => ({ id: p.id, name: p.name || p.email, email: p.email || '—' }));
+  state.friends = (data || []).map(p => ({ id: p.id, name: p.name || p.email, email: p.email || 'N/A' }));
 }
 
 async function fetchPendingRequests() {
@@ -593,7 +593,7 @@ async function register(name, email, password) {
     password,
     options: {
       data: { name: name.trim() },
-      emailRedirectTo: `${window.location.origin}/`,
+      emailRedirectTo: `${window.location.origin}${import.meta.env.BASE_URL}`,
     },
   });
   if (error) return error.message;
@@ -966,13 +966,13 @@ async function startVoucherScan(file, mimeType) {
     go('voucher-form').then(() => {
       if (silent) return;
       if (rateLimited) {
-        showToast("You've reached today's AI-scan limit — please fill in manually, or try again later.");
+        showToast("You've reached today's AI-scan limit. Please fill in manually, or try again later.");
       } else if (!fields) {
-        showToast('Could not auto-read this file — please fill in manually.');
+        showToast('Could not auto-read this file. Please fill in manually.');
       } else if (!barcode) {
-        showToast('Auto-filled — no scannable QR code found in this photo.');
+        showToast('Auto-filled. No scannable QR code found in this photo.');
       } else {
-        showToast('Auto-filled from your photo — please check the details before saving.');
+        showToast('Auto-filled from your photo. Please check the details before saving.');
       }
     });
   };
@@ -1087,20 +1087,20 @@ async function sendVoucherGift(id) {
 async function cancelVoucherGift(giftId) {
   const { error } = await supabase.from('voucher_gifts').update({ status: 'cancelled' }).eq('id', giftId);
   if (error) { console.error('cancelVoucherGift error:', error); showToast('Error cancelling gift'); return; }
-  showToast('Gift cancelled — voucher is back in your wallet');
+  showToast('Gift cancelled. Voucher is back in your wallet');
   go('pending-gifts');
 }
 
 // Shows the QR code + shareable link for a gift. Reused both right after
 // creating a gift and from the Pending Gifts list ("Link" button).
 async function showGiftShareScreen(giftId, voucher) {
-  const claimUrl = `${window.location.origin}/?gift=${giftId}`;
+  const claimUrl = `${window.location.origin}${import.meta.env.BASE_URL}?gift=${giftId}`;
   const overlay = document.createElement('div');
   overlay.className = 'overlay';
   overlay.innerHTML = `
   <div class="dialog">
     <h3>Send ${esc(voucher.brand)} to a friend</h3>
-    <p>Have them scan this code, or share the link. Anyone with this link can claim it — only share it with your friend.</p>
+    <p>Have them scan this code, or share the link. Anyone with this link can claim it, so only share it with your friend.</p>
     <div class="gift-qr-wrap"><img id="gift-qr-img" alt="QR code to claim this voucher"></div>
     <div class="gift-link-row">
       <input type="text" readonly value="${esc(claimUrl)}" id="gift-link-input">
@@ -1159,7 +1159,7 @@ async function deductBalance(id, amount) {
     const { error } = await supabase.from('vouchers').update({ balance: null, status: 'used' }).eq('id', id);
     if (error) { console.error('deductBalance error:', error); showToast('Error updating balance'); return; }
     await supabase.from('marketplace_listings').update({ status: 'cancelled' }).eq('voucher_id', id);
-    showToast('Voucher fully used — marked as used');
+    showToast('Voucher fully used. Marked as used');
   } else {
     const { error } = await supabase.from('vouchers').update({ balance: newBalance }).eq('id', id);
     if (error) { console.error('deductBalance error:', error); showToast('Error updating balance'); return; }
@@ -1680,7 +1680,7 @@ function viewAuth() {
     </div>
 
     ${localStorage.getItem('pendingGiftId') ? `
-    <div class="gift-waiting-banner">${icon.gift} You have a gift waiting — log in or sign up to claim it!</div>
+    <div class="gift-waiting-banner">${icon.gift} You have a gift waiting! Log in or sign up to claim it.</div>
     ` : ''}
 
     <div class="auth-tabs">
@@ -1912,7 +1912,7 @@ function viewVouchers() {
 
     ${state.pendingGifts.length > 0 ? `
     <button type="button" class="pending-gifts-pill" data-nav="pending-gifts">
-      ${icon.gift} ${state.pendingGifts.length} pending gift${state.pendingGifts.length !== 1 ? 's' : ''} — waiting to be claimed
+      ${icon.gift} ${state.pendingGifts.length} pending gift${state.pendingGifts.length !== 1 ? 's' : ''}, waiting to be claimed
     </button>
     ` : ''}
 
@@ -1960,7 +1960,7 @@ function viewPendingGifts() {
       <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
         <div>
           <div style="font-weight:700">${esc(v.brand)}</div>
-          <div class="text-muted text-xs">${formatCurrency(v.value, v.currency)} — sent ${formatDate(g.created_at?.slice(0, 10))}</div>
+          <div class="text-muted text-xs">${formatCurrency(v.value, v.currency)} · sent ${formatDate(g.created_at?.slice(0, 10))}</div>
         </div>
         <div style="display:flex;gap:8px">
           <button type="button" class="btn btn-secondary btn-sm" data-action="show-gift-qr" data-id="${esc(g.id)}" data-voucher-id="${esc(v.id)}">${icon.link} Link</button>
@@ -2040,7 +2040,7 @@ function viewVoucherForm() {
       <div class="form-group" id="barcode-group" ${barcodeGroupVisible(v) ? '' : 'style="display:none"'}>
         <label>QR Code</label>
         <div id="barcode-preview">${barcodePreviewHtml(v)}</div>
-        <span class="form-hint">Auto-detected from your photo — shown at the top of this voucher for quick scanning</span>
+        <span class="form-hint">Auto-detected from your photo. Shown at the top of this voucher for quick scanning</span>
       </div>
 
       <div class="form-group">
@@ -2059,7 +2059,7 @@ function viewVoucherForm() {
           </div>
         </div>
         <input type="file" id="voucher-file-input" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,application/pdf" multiple style="display:none">
-        <span class="form-hint">Front &amp; back photos, or a PDF — JPG, PNG, WEBP, HEIC or PDF, max 10MB each</span>
+        <span class="form-hint">Front &amp; back photos, or a PDF (JPG, PNG, WEBP, HEIC or PDF, max 10MB each)</span>
       </div>
 
       <div class="form-group">
@@ -2133,7 +2133,7 @@ function viewVoucherDetail() {
   const showReminderForm = state.params.reminderForm;
   const showDeductForm   = state.params.deductForm;
 
-  let expiryInfo = '—';
+  let expiryInfo = 'N/A';
   if (days !== null) {
     if (days < 0)        expiryInfo = `<span class="text-danger">Expired ${Math.abs(days)} day${Math.abs(days)!==1?'s':''} ago</span>`;
     else if (days === 0) expiryInfo = `<span class="text-warning fw-600">Expires today!</span>`;
@@ -2434,7 +2434,7 @@ function viewListingDetail() {
       </div>
       <div class="detail-item">
         <div class="detail-item-label">Expiry Date</div>
-        <div class="detail-item-value ${days !== null && days <= 7 && days >= 0 ? 'text-warning' : days !== null && days < 0 ? 'text-danger' : ''}">${l.expiryDate ? formatDate(l.expiryDate) : '—'}</div>
+        <div class="detail-item-value ${days !== null && days <= 7 && days >= 0 ? 'text-warning' : days !== null && days < 0 ? 'text-danger' : ''}">${l.expiryDate ? formatDate(l.expiryDate) : 'N/A'}</div>
       </div>
       <div class="detail-item">
         <div class="detail-item-label">Seller</div>
@@ -2674,9 +2674,9 @@ function viewReferralForm() {
       <div class="form-group">
         <label>Who can see this?</label>
         <select name="visibility">
-          <option value="public" ${(r?.visibility||'public')==='public'?'selected':''}>Public — visible to everyone</option>
-          <option value="friends" ${r?.visibility==='friends'?'selected':''}>Friends only — visible to people you follow</option>
-          <option value="private" ${r?.visibility==='private'?'selected':''}>Private — only you</option>
+          <option value="public" ${(r?.visibility||'public')==='public'?'selected':''}>Public (visible to everyone)</option>
+          <option value="friends" ${r?.visibility==='friends'?'selected':''}>Friends only (visible to people you follow)</option>
+          <option value="private" ${r?.visibility==='private'?'selected':''}>Private (only you)</option>
         </select>
         <span class="form-hint">Public codes are shown in the community feed</span>
       </div>
@@ -3255,7 +3255,7 @@ async function handleAction(el, e) {
     case 'send-gift':
       showConfirm({
         title: 'Send this voucher?',
-        message: "It'll leave your wallet and you'll get a QR code / link to share — your friend receives it the moment they claim it, even if they don't have an account yet.",
+        message: "It'll leave your wallet and you'll get a QR code / link to share. Your friend receives it the moment they claim it, even if they don't have an account yet.",
         confirmLabel: 'Send',
         confirmClass: 'btn-primary',
         onConfirm: () => sendVoucherGift(id),
@@ -3482,7 +3482,7 @@ async function handleSubmit(e) {
     const okEl  = document.getElementById('forgot-success');
     if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
     const { error } = await supabase.auth.resetPasswordForEmail(d.email, {
-      redirectTo: `${window.location.origin}`,
+      redirectTo: `${window.location.origin}${import.meta.env.BASE_URL}`,
     });
     if (btn) { btn.disabled = false; btn.textContent = 'Send Reset Link'; }
     if (error) {
@@ -3692,7 +3692,7 @@ async function init() {
   const authErrorDesc = urlHash.get('error_description') || urlSearch.get('error_description');
   const giftId        = urlSearch.get('gift') || urlHash.get('gift');
   if (giftId) localStorage.setItem('pendingGiftId', giftId);
-  if (isEmailConfirm || isRecovery || authError || giftId) window.history.replaceState(null, '', '/');
+  if (isEmailConfirm || isRecovery || authError || giftId) window.history.replaceState(null, '', import.meta.env.BASE_URL);
 
   const { data: { session } } = await supabase.auth.getSession();
   if (isRecovery && session) {
@@ -3721,7 +3721,7 @@ async function init() {
   }
 
   if (isEmailConfirm && session) {
-    setTimeout(() => showToast('Email confirmed — welcome to VoucherWise!'), 300);
+    setTimeout(() => showToast('Email confirmed! Welcome to VoucherWise.'), 300);
   }
 
   // Handle email confirmation / password-recovery links — session fires here if not already caught above
@@ -3739,7 +3739,7 @@ async function init() {
       await Promise.all([fetchBrands(), fetchListings(), fetchFriendIds(), fetchPendingRequests(), fetchReminders(), fetchPendingGifts()]);
       render();
       if (isEmailConfirm) {
-        setTimeout(() => showToast('Email confirmed — welcome to VoucherWise!'), 300);
+        setTimeout(() => showToast('Email confirmed! Welcome to VoucherWise.'), 300);
       }
     }
   });

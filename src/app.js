@@ -439,17 +439,14 @@ function getBrandDescription(brandName) {
 }
 
 /* Fire-and-forget: asks the enrich-brand edge function to AI-generate a short
-   intro (and, if missing, guess the domain for the logo lookup) for a brand
-   that doesn't have one yet. Never blocks the caller. */
+   intro for a brand that doesn't have one yet. Never blocks the caller. */
 function enrichBrandAsync(brandId) {
   if (!brandId) return;
   supabase.functions.invoke('enrich-brand', { body: { brandId } })
     .then(({ data, error }) => {
       if (error || !data?.description) return;
       const b = state.brands.find(x => x.id === brandId);
-      if (!b) return;
-      b.description = data.description;
-      if (data.domain) b.domain = data.domain;
+      if (b) b.description = data.description;
     })
     .catch(() => {});
 }

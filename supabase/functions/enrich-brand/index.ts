@@ -21,19 +21,27 @@ Deno.serve(async (req) => {
   if (req.method !== 'POST') return jsonResponse({ error: 'Method not allowed' }, 405);
 
   if (!ANTHROPIC_API_KEY) {
+    console.error('enrich-brand: ANTHROPIC_API_KEY secret is not configured');
     return jsonResponse({ error: 'ANTHROPIC_API_KEY secret is not configured' }, 500);
   }
 
   const authHeader = req.headers.get('Authorization');
-  if (!authHeader) return jsonResponse({ error: 'Unauthorized' }, 401);
+  if (!authHeader) {
+    console.error('enrich-brand: missing Authorization header');
+    return jsonResponse({ error: 'Unauthorized' }, 401);
+  }
 
   let brandId: string | undefined;
   try {
     ({ brandId } = await req.json());
   } catch {
+    console.error('enrich-brand: invalid JSON body');
     return jsonResponse({ error: 'Invalid JSON body' }, 400);
   }
-  if (!brandId) return jsonResponse({ error: 'brandId is required' }, 400);
+  if (!brandId) {
+    console.error('enrich-brand: brandId missing from request body');
+    return jsonResponse({ error: 'brandId is required' }, 400);
+  }
 
   // Scoped to the caller's own session so this respects the brands RLS policies.
   const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -46,19 +54,19 @@ Deno.serve(async (req) => {
     .eq('id', brandId)
     .maybeSingle();
 
-  if (fetchErr) return jsonResponse({ error: fetchErr.message }, 500);
-  if (!brand) return jsonResponse({ error: 'Brand not found' }, 404);
-  if (brand.description) return jsonResponse({ description: brand.description, domain: brand.domain, skipped: true });
+  if (fetchErr) {
+    console.error('enrich-brand: brand fetch failed', brandId, fetchErr.message);
+    return jsonResponse({ error: fetchErr.message }, 500);
+  }
+  if (!brand) {
+    console.error('enrich-brand: brand not found', brandId);
+    return jsonResponse({ error: 'Brand not found' }, 404);
+  }
+  if (brand.description) return jsonResponse({ description: brand.description, skipped: true });
 
-  const needsDomain = !brand.domain;
-
-  const prompt = `Identify the brand/company "${brand.name}" for shoppers browsing a second-hand gift-card marketplace app.
-
-Respond with ONLY a JSON object (no markdown code fences, no other text), with these keys:
-- "description": a short, factual, neutral 1-3 sentence introduction, plain prose, no quotation marks. If you don't recognize this brand with confidence, write one generic sentence describing it neutrally as a brand/store without inventing specific facts.
-${needsDomain
-    ? '- "domain": the brand\'s official website domain, lowercase, no protocol/path (e.g. "nike.com"). Only include this if you are confident; otherwise use null.'
-    : '- "domain": null'}`;
+  const prompt = `Give a short, factual, neutral introduction to the brand/company "${brand.name}"${
+    brand.domain ? ` (website: ${brand.domain})` : ''
+  } for shoppers browsing a second-hand gift-card marketplace app. 1-3 short sentences of plain prose, no markdown, no quotation marks, no preamble. If you don't recognize this brand with confidence, write one generic sentence describing it neutrally as a brand/store without inventing specific facts.`;
 
   const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -69,46 +77,34 @@ ${needsDomain
     },
     body: JSON.stringify({
       model: 'claude-haiku-4-5-20251001',
-      max_tokens: 300,
+      max_tokens: 200,
       messages: [{ role: 'user', content: prompt }],
     }),
   });
 
   if (!aiRes.ok) {
     const text = await aiRes.text();
-    console.error('anthropic error', aiRes.status, text);
+    console.error('enrich-brand: anthropic error', brandId, aiRes.status, text);
     return jsonResponse({ error: 'AI generation failed' }, 502);
   }
 
   const aiJson = await aiRes.json();
-  const raw = (aiJson.content?.[0]?.text ?? '').trim();
-  if (!raw) return jsonResponse({ error: 'Empty AI response' }, 502);
-
-  let description = '';
-  let domain: string | null = null;
-  try {
-    const parsed = JSON.parse(raw);
-    description = typeof parsed.description === 'string' ? parsed.description.trim() : '';
-    if (needsDomain && typeof parsed.domain === 'string') {
-      const candidate = parsed.domain.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
-      if (/^[a-z0-9.-]+\.[a-z]{2,}$/.test(candidate)) domain = candidate;
-    }
-  } catch {
-    // Model didn't return valid JSON — fall back to treating the raw text as the description.
-    description = raw;
+  const description = (aiJson.content?.[0]?.text ?? '').trim();
+  if (!description) {
+    console.error('enrich-brand: empty AI response', brandId, JSON.stringify(aiJson));
+    return jsonResponse({ error: 'Empty AI response' }, 502);
   }
-
-  if (!description) return jsonResponse({ error: 'Empty description in AI response' }, 502);
-
-  const updates: Record<string, string> = { description };
-  if (domain) updates.domain = domain;
 
   const { error: updateErr } = await supabase
     .from('brands')
-    .update(updates)
+    .update({ description })
     .eq('id', brandId);
 
-  if (updateErr) return jsonResponse({ error: updateErr.message }, 500);
+  if (updateErr) {
+    console.error('enrich-brand: DB update failed', brandId, updateErr.message);
+    return jsonResponse({ error: updateErr.message }, 500);
+  }
 
-  return jsonResponse({ description, domain: domain ?? brand.domain });
+  console.log('enrich-brand: success', brandId);
+  return jsonResponse({ description });
 });

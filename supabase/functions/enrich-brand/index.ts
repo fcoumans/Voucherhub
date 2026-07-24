@@ -16,6 +16,37 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
+function extractTag(html: string, pattern: RegExp): string | null {
+  const match = html.match(pattern);
+  return match?.[1]?.trim() || null;
+}
+
+// Pulls just the title + meta description so the AI describes the actual
+// site instead of guessing from the brand name (which can collide with a
+// more famous, differently-named business — e.g. "La Bottega").
+async function fetchDomainSnippet(domain: string): Promise<string | null> {
+  const url = domain.startsWith('http') ? domain : `https://${domain}`;
+  try {
+    const res = await fetch(url, {
+      redirect: 'follow',
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; VoucherHubBot/1.0)' },
+      signal: AbortSignal.timeout(6000),
+    });
+    if (!res.ok) return null;
+    const html = await res.text();
+    const title = extractTag(html, /<title[^>]*>([^<]*)<\/title>/i);
+    const description =
+      extractTag(html, /<meta[^>]+name=["']description["'][^>]+content=["']([^"']*)["']/i) ||
+      extractTag(html, /<meta[^>]+content=["']([^"']*)["'][^>]+name=["']description["']/i) ||
+      extractTag(html, /<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']*)["']/i);
+    const parts = [title, description].filter(Boolean);
+    return parts.length ? parts.join(' — ').slice(0, 600) : null;
+  } catch (err) {
+    console.error('enrich-brand: domain fetch failed', domain, err);
+    return null;
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
   if (req.method !== 'POST') return jsonResponse({ error: 'Method not allowed' }, 405);
@@ -64,9 +95,13 @@ Deno.serve(async (req) => {
   }
   if (brand.description) return jsonResponse({ description: brand.description, skipped: true });
 
-  const prompt = `Give a short, factual, neutral introduction to the brand/company "${brand.name}"${
-    brand.domain ? ` (website: ${brand.domain})` : ''
-  } for shoppers browsing a second-hand gift-card marketplace app. 1-3 short sentences of plain prose, no markdown, no quotation marks, no preamble. If you don't recognize this brand with confidence, write one generic sentence describing it neutrally as a brand/store without inventing specific facts.`;
+  const siteSnippet = brand.domain ? await fetchDomainSnippet(brand.domain) : null;
+
+  const prompt = siteSnippet
+    ? `Here is the title and meta description from the homepage of "${brand.name}" (${brand.domain}):\n\n"""${siteSnippet}"""\n\nBased ONLY on this page content, write a short, factual, neutral 1-3 sentence introduction to this brand/store for shoppers browsing a second-hand gift-card marketplace app. Plain prose, no markdown, no quotation marks, no preamble. Describe what this specific website actually offers — do not substitute knowledge of a different, more famous brand that happens to share this name.`
+    : `Give a short, factual, neutral introduction to the brand/company "${brand.name}"${
+        brand.domain ? ` (website: ${brand.domain})` : ''
+      } for shoppers browsing a second-hand gift-card marketplace app. 1-3 short sentences of plain prose, no markdown, no quotation marks, no preamble. If you don't recognize this brand with confidence, write one generic sentence describing it neutrally as a brand/store without inventing specific facts.`;
 
   const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',

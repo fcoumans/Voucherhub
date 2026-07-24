@@ -612,14 +612,18 @@ p { line-height: 1.5; }
 .home-header h2 { font-size: 1.375rem; }
 
 .stats-card {
-  background: linear-gradient(135deg, #11233F 0%, #1c3354 100%);
+  /* Liquid glass, navy-dominant: high opacity so the page background can't wash out the blue; blur/saturate still gives it glass richness */
+  background: linear-gradient(135deg, rgba(15, 31, 58, 0.98) 0%, rgba(28, 51, 84, 0.92) 100%);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: var(--radius);
   padding: 20px 24px;
   display: flex;
   align-items: center;
   justify-content: space-around;
   margin-bottom: 24px;
-  box-shadow: 0 8px 24px rgba(17, 35, 63, 0.2), 0 2px 6px rgba(17, 35, 63, 0.1);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.15), 0 8px 24px rgba(17, 35, 63, 0.2), 0 2px 6px rgba(17, 35, 63, 0.1);
 }
 
 .stat {
@@ -680,15 +684,18 @@ p { line-height: 1.5; }
 }
 
 .quick-action {
-  background: var(--surface);
+  /* Liquid glass, matching .voucher-card: white-to-beige sheen + saturating blur */
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.8) 0%, rgba(244, 241, 232, 0.35) 100%);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
   border-radius: var(--radius-sm);
   padding: 16px 12px;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 8px;
-  box-shadow: var(--shadow);
-  border: 1px solid var(--border);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7), 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.4);
   transition: all 0.15s;
   -webkit-tap-highlight-color: transparent;
 }
@@ -721,14 +728,17 @@ p { line-height: 1.5; }
 }
 
 .voucher-card {
-  background: var(--surface);
-  border-radius: var(--radius);
+  /* Liquid glass: translucent + saturating blur (the saturate is what reads as "glass" instead of "milky") + a diagonal white-to-beige sheen for a light-catching highlight */
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.8) 0%, rgba(244, 241, 232, 0.35) 100%);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 16px;
   padding: 14px;
   display: flex;
   align-items: center;
   gap: 12px;
-  box-shadow: var(--shadow);
-  border: 1px solid var(--border);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7), 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
   cursor: pointer;
   transition: all 0.15s;
   -webkit-tap-highlight-color: transparent;
@@ -952,14 +962,17 @@ p { line-height: 1.5; }
    MARKETPLACE
    ============================================================ */
 .listing-card {
-  background: var(--surface);
+  /* Liquid glass, matching .voucher-card */
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.8) 0%, rgba(244, 241, 232, 0.35) 100%);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.4);
   border-radius: var(--radius);
   padding: 16px;
   display: flex;
   align-items: center;
   gap: 14px;
-  box-shadow: var(--shadow);
-  border: 1px solid var(--border);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7), 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
   cursor: pointer;
   transition: all 0.15s;
   margin-bottom: 10px;
@@ -1124,12 +1137,15 @@ p { line-height: 1.5; }
 }
 
 .ps-item {
-  background: var(--surface);
+  /* Liquid glass, matching .quick-action */
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.8) 0%, rgba(244, 241, 232, 0.35) 100%);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
   border-radius: var(--radius-sm);
   padding: 14px;
   text-align: center;
-  border: 1px solid var(--border);
-  box-shadow: var(--shadow);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7), 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
 }
 
 .ps-value {
@@ -1148,11 +1164,14 @@ p { line-height: 1.5; }
 }
 
 .settings-list {
-  background: var(--surface);
+  /* Liquid glass, matching .quick-action */
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.8) 0%, rgba(244, 241, 232, 0.35) 100%);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
   border-radius: var(--radius);
   overflow: hidden;
-  box-shadow: var(--shadow);
-  border: 1px solid var(--border);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7), 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.4);
 }
 
 .settings-item {

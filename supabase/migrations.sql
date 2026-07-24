@@ -9,6 +9,7 @@ ALTER TABLE public.brands ADD COLUMN IF NOT EXISTS created_by UUID REFERENCES au
 ALTER TABLE public.brands ADD COLUMN IF NOT EXISTS category   TEXT;
 ALTER TABLE public.brands ADD COLUMN IF NOT EXISTS domain     TEXT;
 ALTER TABLE public.brands ADD COLUMN IF NOT EXISTS logo_url   TEXT;
+ALTER TABLE public.brands ADD COLUMN IF NOT EXISTS description TEXT;
 
 ALTER TABLE public.brands ENABLE ROW LEVEL SECURITY;
 

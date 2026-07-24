@@ -263,7 +263,7 @@ async function fetchVouchers() {
 async function fetchBrands() {
   const { data, error } = await supabase
     .from('brands')
-    .select('id, name, category, domain, logo_url')
+    .select('id, name, category, domain, logo_url, description')
     .order('name');
   if (error) { console.error('fetchBrands error:', error); return; }
   state.brands = data || [];
@@ -354,7 +354,7 @@ async function fetchPendingRequests() {
 
 async function fetchReferrals() {
   if (!state.currentUser) return;
-  const joinSel = '*, brands(id, name, domain, logo_url)';
+  const joinSel = '*, brands(id, name, domain, logo_url, description)';
   const friendIds = state.friendIds || [];
   let [mine, pub, frnd] = await Promise.all([
     supabase.from('referral_codes').select(joinSel).eq('user_id', state.currentUser.id),
@@ -434,6 +434,23 @@ function getBrandLogo(brandName) {
   return null;
 }
 
+function getBrandDescription(brandName) {
+  return getBrandByName(brandName)?.description || null;
+}
+
+/* Fire-and-forget: asks the enrich-brand edge function to AI-generate a short
+   intro for a brand that doesn't have one yet. Never blocks the caller. */
+function enrichBrandAsync(brandId) {
+  if (!brandId) return;
+  supabase.functions.invoke('enrich-brand', { body: { brandId } })
+    .then(({ data, error }) => {
+      if (error || !data?.description) return;
+      const b = state.brands.find(x => x.id === brandId);
+      if (b) b.description = data.description;
+    })
+    .catch(() => {});
+}
+
 async function ensureBrand(name, category) {
   const normalized = name.trim();
   if (!normalized) return;
@@ -444,18 +461,20 @@ async function ensureBrand(name, category) {
       await supabase.from('brands').update({ category }).eq('id', existing.id);
       existing.category = category;
     }
+    if (!existing.description) enrichBrandAsync(existing.id);
     return;
   }
   const { data, error } = await supabase
     .from('brands')
     .insert({ name: normalized, created_by: state.currentUser.id, category: category || null })
-    .select('id, name, category, domain, logo_url')
+    .select('id, name, category, domain, logo_url, description')
     .single();
   if (error && error.code !== '23505') {
     console.error('ensureBrand error:', error);
   } else {
-    const newBrand = data || { name: normalized, category: category || null, domain: null, logo_url: null };
+    const newBrand = data || { name: normalized, category: category || null, domain: null, logo_url: null, description: null };
     state.brands = [...state.brands, newBrand].sort((a, b) => a.name.localeCompare(b.name));
+    if (newBrand.id) enrichBrandAsync(newBrand.id);
   }
 }
 
@@ -1756,6 +1775,8 @@ function viewListingDetail() {
   const isOwn = l.sellerId === state.currentUser.id;
   const days  = l.expiryDate ? daysUntil(l.expiryDate) : null;
 
+  const brandDesc = getBrandDescription(l.brand);
+
   return `
   ${renderHeader(l.brand, 'marketplace')}
   <main class="content">
@@ -1765,6 +1786,8 @@ function viewListingDetail() {
       <div class="ld-original">${formatCurrency(l.originalValue, l.currency)} original value</div>
       ${disc > 0 ? `<div style="margin-top:8px"><span class="discount-badge">-${disc}% discount</span></div>` : ''}
     </div>
+
+    ${brandDesc ? `<p class="text-muted" style="font-size:0.875rem;margin-bottom:16px">${esc(brandDesc)}</p>` : ''}
 
     <div class="detail-grid">
       <div class="detail-item">
@@ -1889,6 +1912,7 @@ function viewReferrals() {
   if (brand) {
     let visible = pool.filter(r => r.brand === brand);
     if (q) visible = visible.filter(r => r.code.toLowerCase().includes(q) || r.brand.toLowerCase().includes(q));
+    const brandDesc = getBrandDescription(brand);
 
     return `
     <header class="app-header">
@@ -1897,6 +1921,7 @@ function viewReferrals() {
       <div class="header-right"></div>
     </header>
     <main class="content">
+      ${brandDesc ? `<p class="text-muted" style="font-size:0.875rem;margin-bottom:14px">${esc(brandDesc)}</p>` : ''}
       ${tabs}
       <div class="search-bar" style="margin-bottom:16px">
         <span class="search-icon">${icon.search}</span>

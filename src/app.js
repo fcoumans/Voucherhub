@@ -869,11 +869,12 @@ async function extractVoucherFields(file, mimeType) {
     const { data, error } = await supabase.functions.invoke('extract-voucher', {
       body: { fileBase64, mimeType },
     });
-    if (error || !data?.fields) return null;
-    return data.fields;
+    if (error) return { fields: null, rateLimited: error?.context?.status === 429 };
+    if (!data?.fields) return { fields: null, rateLimited: false };
+    return { fields: data.fields, rateLimited: false };
   } catch (err) {
     console.error('extractVoucherFields error:', err);
-    return null;
+    return { fields: null, rateLimited: false };
   }
 }
 
@@ -936,7 +937,7 @@ async function startVoucherScan(file, mimeType) {
   const screen = showScanLoadingScreen();
   let settled = false;
 
-  const finish = (fields, barcode, { silent = false } = {}) => {
+  const finish = (fields, barcode, { silent = false, rateLimited = false } = {}) => {
     if (settled || token !== scanToken) return;
     settled = true;
     hideScanLoadingScreen();
@@ -946,7 +947,9 @@ async function startVoucherScan(file, mimeType) {
     barcodeScanState         = silent ? null : (barcode ? null : 'missing');
     go('voucher-form').then(() => {
       if (silent) return;
-      if (!fields) {
+      if (rateLimited) {
+        showToast("You've reached today's AI-scan limit — please fill in manually, or try again later.");
+      } else if (!fields) {
         showToast('Could not auto-read this file — please fill in manually.');
       } else if (!barcode) {
         showToast('Auto-filled — no scannable QR code found in this photo.');
@@ -959,11 +962,12 @@ async function startVoucherScan(file, mimeType) {
   screen.querySelector('#scan-skip-btn').addEventListener('click', () => finish(null, null, { silent: true }));
 
   const emptyCandidates = { img: null, imgW: 0, imgH: 0, candidates: [] };
+  const emptyExtraction = { fields: null, rateLimited: false };
   const [extractionOutcome, candidatesOutcome] = await Promise.allSettled([
-    Promise.race([extractVoucherFields(file, mimeType), new Promise(resolve => setTimeout(() => resolve(null), 25000))]),
+    Promise.race([extractVoucherFields(file, mimeType), new Promise(resolve => setTimeout(() => resolve(emptyExtraction), 25000))]),
     Promise.race([findBarcodeCandidates(file, mimeType), new Promise(resolve => setTimeout(() => resolve(emptyCandidates), 25000))]),
   ]);
-  const fields = extractionOutcome.status === 'fulfilled' ? extractionOutcome.value : null;
+  const { fields, rateLimited } = extractionOutcome.status === 'fulfilled' ? extractionOutcome.value : emptyExtraction;
   const { img, imgW, imgH, candidates } = candidatesOutcome.status === 'fulfilled' ? candidatesOutcome.value : emptyCandidates;
 
   // Now that extraction is done too, use its code field (if any) to pick
@@ -971,7 +975,7 @@ async function startVoucherScan(file, mimeType) {
   const best = pickBestBarcodeCandidate(candidates, fields?.code);
   const barcode = best && img ? await cropBarcodeCandidate(img, imgW, imgH, best) : null;
 
-  finish(fields, barcode);
+  finish(fields, barcode, { rateLimited });
 }
 
 /* ============================================================

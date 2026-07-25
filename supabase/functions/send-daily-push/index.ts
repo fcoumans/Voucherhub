@@ -118,7 +118,7 @@ Deno.serve(async (req) => {
   // --- Manual reminders ---
   const { data: manualReminders, error: rErr } = await supabase
     .from('notifications')
-    .select('id, user_id, voucher_id, reminder_time')
+    .select('id, user_id, voucher_id, reminder_date, reminder_time')
     .eq('notification_type', 'reminder')
     .eq('sent', false)
     .lte('reminder_date', todayStr);
@@ -126,8 +126,11 @@ Deno.serve(async (req) => {
   if (rErr) console.error('fetchReminders error:', rErr.message);
 
   for (const r of (manualReminders ?? [])) {
-    // If a specific time was set, only send once we've passed that local hour.
-    if (r.reminder_time && r.reminder_time.slice(0, 5) > nowLocalHHMM()) { skipped++; continue; }
+    // The time-of-day gate only means something on the reminder's own day —
+    // once that day has passed, send immediately regardless of what time
+    // was originally picked (comparing today's clock time against a time
+    // set for an earlier day is meaningless and would block it forever).
+    if (r.reminder_time && r.reminder_date === todayStr && r.reminder_time.slice(0, 5) > nowLocalHHMM()) { skipped++; continue; }
 
     const { data: voucher } = await supabase
       .from('vouchers')

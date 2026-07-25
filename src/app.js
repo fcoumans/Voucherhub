@@ -2075,7 +2075,11 @@ function viewVoucherForm() {
 
       <div class="form-group">
         <label>Expiry Date</label>
-        <input type="date" name="expiryDate" value="${esc(v?.expiryDate||'')}">
+        <div class="date-field-row">
+          <input type="date" name="expiryDate" id="voucher-expiry-input" value="${esc(v?.expiryDate||'')}">
+          <button type="button" class="btn btn-ghost btn-sm" data-action="clear-expiry-date">Clear</button>
+        </div>
+        <span class="form-hint">Leave blank if this voucher doesn't expire</span>
       </div>
 
       <div class="form-group">
@@ -2770,13 +2774,31 @@ function viewFriends() {
 function viewProfile() {
   const u           = state.currentUser;
   const vouchers    = state.vouchers;
-  const active      = vouchers.filter(v => ['active','expiring'].includes(getStatus(v)));
-  const used        = vouchers.filter(v => getStatus(v) === 'used');
-  const sold        = vouchers.filter(v => getStatus(v) === 'sold');
+  const activeOnly  = vouchers.filter(v => getStatus(v) === 'active');
+  const expiring    = vouchers.filter(v => getStatus(v) === 'expiring');
+  const listed      = vouchers.filter(v => getStatus(v) === 'listed');
+  const giftedVouchers = state.pendingGifts
+    .map(g => vouchers.find(v => v.id === g.voucher_id))
+    .filter(Boolean);
   const myListings  = state.listings.filter(l => l.sellerId === u.id);
   const myReferrals = state.referrals.filter(r => r.userId === u.id);
   const following   = state.friendIds.length;
-  const totalSaved  = active.reduce((s, v) => s + parseFloat((v.balance ?? v.value) || 0), 0);
+  const valueOf     = list => list.reduce((s, v) => s + parseFloat((v.balance ?? v.value) || 0), 0);
+
+  const kpiCard = (label, list, navView, navParams = {}) => `
+    <button type="button" class="kpi-card" ${navView ? `data-nav="${navView}"` : ''} ${navParams.id ? `data-id="${esc(navParams.id)}"` : ''}>
+      <div class="kpi-label">${label}</div>
+      <div class="kpi-row">
+        <div class="kpi-stat">
+          <div class="kpi-value">${list.length}</div>
+          <div class="kpi-unit">voucher${list.length !== 1 ? 's' : ''}</div>
+        </div>
+        <div class="kpi-stat">
+          <div class="kpi-value">${formatCurrency(valueOf(list), 'EUR')}</div>
+          <div class="kpi-unit">value</div>
+        </div>
+      </div>
+    </button>`;
 
   return `
   ${renderHeader('Profile')}
@@ -2787,23 +2809,11 @@ function viewProfile() {
       <div class="profile-email">${esc(u.email)}</div>
     </div>
 
-    <div class="profile-stats">
-      <div class="ps-item">
-        <div class="ps-value">${active.length}</div>
-        <div class="ps-label">Active</div>
-      </div>
-      <div class="ps-item">
-        <div class="ps-value">${used.length}</div>
-        <div class="ps-label">Used</div>
-      </div>
-      <div class="ps-item">
-        <div class="ps-value">${sold.length}</div>
-        <div class="ps-label">Sold</div>
-      </div>
-      <div class="ps-item">
-        <div class="ps-value">€${totalSaved.toLocaleString('nl-NL', { maximumFractionDigits: 0 })}</div>
-        <div class="ps-label">Wallet</div>
-      </div>
+    <div class="kpi-grid">
+      ${kpiCard('Active', activeOnly, 'vouchers')}
+      ${kpiCard('Expiring', expiring, 'vouchers')}
+      ${kpiCard('Listed', listed, 'marketplace')}
+      ${kpiCard('Gifted', giftedVouchers, 'pending-gifts')}
     </div>
 
     <div class="settings-list">
@@ -3251,6 +3261,13 @@ async function handleAction(el, e) {
     case 'unlist':
       showConfirm({ title: 'Remove Listing?', message: 'Your voucher will be removed from the marketplace.', confirmLabel: 'Remove', onConfirm: () => unlist(id) });
       break;
+
+    case 'clear-expiry-date': {
+      e.preventDefault();
+      const input = document.getElementById('voucher-expiry-input');
+      if (input) input.value = '';
+      break;
+    }
 
     case 'send-gift':
       showConfirm({

@@ -100,6 +100,12 @@ const formatCurrency = (amount, currency = 'EUR', showDecimals = true) => {
   return (sym[currency] || currency + ' ') + formatted;
 };
 
+// Not every voucher has a monetary amount — some are for an experience or
+// item instead, stored as free text in valueDescription. Wherever a
+// voucher's value is displayed, show that text instead of "€0".
+const formatVoucherValue = (v, amount, showDecimals = true) =>
+  v.valueDescription ? esc(v.valueDescription) : formatCurrency(amount, v.currency, showDecimals);
+
 // Native number inputs always require a period; this lets users type a comma (European style) instead.
 const normalizeAmount = (str) => String(str ?? '').trim().replace(',', '.');
 
@@ -143,42 +149,49 @@ function syncUserToSupabase() {}
    ============================================================ */
 function mapVoucher(row) {
   return {
-    id:          row.id,
-    userId:      row.user_id,
-    brand:       row.brand,
-    value:       String(row.amount ?? ''),
-    balance:     row.balance != null ? String(row.balance) : null,
-    currency:    row.currency || 'EUR',
-    expiryDate:  row.expiration_date || null,
-    code:        row.voucher_code || '',
-    pin:         row.pin || '',
-    notes:       row.notes || '',
-    category:    row.category || 'Other',
-    status:      row.status === 'listed' ? 'active' : (row.status || 'active'),
-    listed:      row.status === 'listed',
-    copyCount:   row.copy_count || 0,
-    createdAt:   row.created_at,
-    voucherType: row.voucher_type || 'gift_card',
-    barcodePath: row.barcode_path || null,
+    id:               row.id,
+    userId:           row.user_id,
+    brand:            row.brand,
+    value:            row.amount != null ? String(row.amount) : '',
+    valueDescription: row.value_description || '',
+    balance:          row.balance != null ? String(row.balance) : null,
+    currency:         row.currency || 'EUR',
+    expiryDate:       row.expiration_date || null,
+    code:             row.voucher_code || '',
+    pin:              row.pin || '',
+    notes:            row.notes || '',
+    category:         row.category || 'Other',
+    status:           row.status === 'listed' ? 'active' : (row.status || 'active'),
+    listed:           row.status === 'listed',
+    copyCount:        row.copy_count || 0,
+    createdAt:        row.created_at,
+    voucherType:      row.voucher_type || 'gift_card',
+    barcodePath:      row.barcode_path || null,
+    giftMessage:      row.gift_message || '',
+    giftSender:       row.gift_sender || '',
   };
 }
 
 function voucherToDb(v) {
+  const isDescription = v.valueMode === 'description';
   return {
-    user_id:         v.userId,
-    brand:           v.brand,
-    amount:          parseFloat(v.value) || 0,
-    balance:         v.balance !== '' && v.balance != null ? parseFloat(v.balance) : null,
-    currency:        v.currency || 'EUR',
-    expiration_date: v.expiryDate || null,
-    voucher_code:    v.code || null,
-    pin:             v.pin || null,
-    notes:           v.notes || null,
-    category:        v.category || 'Other',
-    status:          v.listed ? 'listed' : (v.status || 'active'),
-    copy_count:      v.copyCount || 0,
-    voucher_type:    v.voucherType || 'gift_card',
-    barcode_path:    v.barcodePath !== undefined ? v.barcodePath : null,
+    user_id:           v.userId,
+    brand:             v.brand,
+    amount:            isDescription ? null : (parseFloat(v.value) || null),
+    value_description: isDescription ? (v.valueDescription || null) : null,
+    balance:           !isDescription && v.balance !== '' && v.balance != null ? parseFloat(v.balance) : null,
+    currency:          v.currency || 'EUR',
+    expiration_date:   v.expiryDate || null,
+    voucher_code:      v.code || null,
+    pin:               v.pin || null,
+    notes:             v.notes || null,
+    category:          v.category || 'Other',
+    status:            v.listed ? 'listed' : (v.status || 'active'),
+    copy_count:        v.copyCount || 0,
+    voucher_type:      v.voucherType || 'gift_card',
+    barcode_path:      v.barcodePath !== undefined ? v.barcodePath : null,
+    gift_message:      v.giftMessage || null,
+    gift_sender:       v.giftSender || null,
   };
 }
 
@@ -525,22 +538,23 @@ async function go(view, params = {}) {
       pendingNewFiles.forEach(f => { if (f.previewUrl) URL.revokeObjectURL(f.previewUrl); });
       pendingNewFiles  = [];
       removedFileIds   = [];
-      if (pendingExtractionFile) {
+      if (pendingExtractionFiles) {
         // Arriving from startVoucherScan — pendingBarcode/pendingExtractionResult
         // were already resolved before this navigation, so leave them intact
         // for the template/render() hook below to consume.
-        const { file, mimeType } = pendingExtractionFile;
-        const kind = fileKind(mimeType);
-        const entry = {
-          localId: randomId(),
-          file,
-          mimeType,
-          kind,
-          previewUrl: kind === 'image' ? URL.createObjectURL(file) : null,
-        };
-        pendingNewFiles.push(entry);
-        pendingExtractionEntry = entry;
-        pendingExtractionFile = null;
+        for (const { file, mimeType } of pendingExtractionFiles) {
+          const kind = fileKind(mimeType);
+          const entry = {
+            localId: randomId(),
+            file,
+            mimeType,
+            kind,
+            previewUrl: kind === 'image' ? URL.createObjectURL(file) : null,
+          };
+          pendingNewFiles.push(entry);
+          pendingExtractionEntry = entry; // truthiness gate consumed once in render(); last entry wins, doesn't matter which
+        }
+        pendingExtractionFiles = null;
       } else {
         // Plain navigation (Manual Entry / Edit) — clear any leftover scan state.
         if (pendingBarcode?.previewUrl) URL.revokeObjectURL(pendingBarcode.previewUrl);
@@ -635,6 +649,7 @@ async function logout() {
 const FILE_BUCKET = 'voucher-photos';
 const ALLOWED_FILE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif', 'application/pdf'];
 const EXT_MIME_FALLBACK = { pdf: 'application/pdf', jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', heic: 'image/heic', heif: 'image/heif' };
+const MAX_SCAN_FILES = 5; // mirrors MAX_FILES_PER_REQUEST in supabase/functions/extract-voucher
 const signedFileUrlCache = new Map(); // path -> { url, expiresAt }
 
 function fileKind(mimeType) {
@@ -829,6 +844,19 @@ async function cropBarcodeCandidate(img, imgW, imgH, candidate) {
   return blob ? { blob, previewUrl: URL.createObjectURL(blob) } : null;
 }
 
+// Same as findBarcodeCandidates but scans several files (e.g. front + back
+// photos of the same voucher) and pools all their candidates into one list,
+// each tagged with the source image it was found on so it can still be
+// cropped from the right one later.
+async function findBarcodeCandidatesForFiles(fileEntries) {
+  const perFile = await Promise.all(fileEntries.map(({ file, mimeType }) => findBarcodeCandidates(file, mimeType)));
+  const candidates = [];
+  for (const { img, imgW, imgH, candidates: fileCandidates } of perFile) {
+    for (const c of fileCandidates) candidates.push({ ...c, img, imgW, imgH });
+  }
+  return candidates;
+}
+
 // Convenience wrapper for call sites that don't have a reference code to
 // disambiguate multiple candidates with (see pickBestBarcodeCandidate).
 async function detectBarcodeCrop(file, mimeType, referenceCode = null) {
@@ -881,12 +909,17 @@ function fileToBase64(file) {
 
 // Pure data fetch — no DOM/toast side effects, so it can run behind the
 // scan-loading screen (see startVoucherScan) without racing the render.
-// Returns the sanitized fields object, or null if extraction failed.
-async function extractVoucherFields(file, mimeType) {
+// Accepts one or more { file, mimeType } pairs (e.g. front + back photos of
+// the same voucher) and returns one combined sanitized fields object, or
+// null if extraction failed.
+async function extractVoucherFields(fileEntries) {
   try {
-    const fileBase64 = await fileToBase64(file);
+    const files = await Promise.all(fileEntries.map(async ({ file, mimeType }) => ({
+      fileBase64: await fileToBase64(file),
+      mimeType,
+    })));
     const { data, error } = await supabase.functions.invoke('extract-voucher', {
-      body: { fileBase64, mimeType },
+      body: { files },
     });
     if (error) return { fields: null, rateLimited: error?.context?.status === 429 };
     if (!data?.fields) return { fields: null, rateLimited: false };
@@ -910,7 +943,18 @@ function applyExtractedFields(fields) {
   };
 
   setIfEmpty('brand', fields.brand);
-  if (fields.amount != null) setIfEmpty('amount', String(fields.amount));
+  if (fields.amount != null) {
+    setIfEmpty('amount', String(fields.amount));
+  } else if (fields.valueDescription) {
+    // Non-monetary value ("weekend getaway for two") — only switch the form
+    // into description mode if both value fields are still untouched.
+    const amountField = form.querySelector('[name="amount"]');
+    const descField    = form.querySelector('[name="valueDescription"]');
+    if (amountField && !amountField.value && descField && !descField.value) {
+      descField.value = fields.valueDescription;
+      form.querySelector('.value-mode-btn[data-mode="description"]')?.click();
+    }
+  }
   setIfEmpty('expiryDate', fields.expiryDate);
   setIfEmpty('code', fields.code);
   setIfEmpty('pin', fields.pin);
@@ -923,6 +967,16 @@ function applyExtractedFields(fields) {
   if (fields.voucherType) {
     const typeSel = form.querySelector('[name="voucherType"]');
     if (typeSel) typeSel.value = fields.voucherType;
+  }
+
+  // A note was found on the photo (e.g. inside a greeting card) — reveal the
+  // gift-note section so it isn't silently filled in behind a collapsed prompt.
+  if (fields.giftMessage || fields.giftSender) {
+    setIfEmpty('giftMessage', fields.giftMessage);
+    setIfEmpty('giftSender', fields.giftSender);
+    document.querySelector('.gift-note-prompt')?.style.setProperty('display', 'none');
+    const noteFields = document.getElementById('gift-note-fields');
+    if (noteFields) noteFields.style.display = '';
   }
 }
 
@@ -951,7 +1005,11 @@ let scanToken = 0; // guards against a superseded/skipped scan applying stale re
 // resolved — so the very first render already has the pre-filled fields
 // and the cropped barcode, instead of racing a background fill-in against
 // however fast the user hits Save.
-async function startVoucherScan(file, mimeType) {
+//
+// fileEntries is one or more { file, mimeType } pairs — e.g. a front photo
+// plus a back photo with terms & conditions — extracted together as a
+// single combined voucher (one AI call sees every page/side at once).
+async function startVoucherScan(fileEntries) {
   const token = ++scanToken;
   const screen = showScanLoadingScreen();
   let settled = false;
@@ -960,7 +1018,7 @@ async function startVoucherScan(file, mimeType) {
     if (settled || token !== scanToken) return;
     settled = true;
     hideScanLoadingScreen();
-    pendingExtractionFile   = { file, mimeType };
+    pendingExtractionFiles  = fileEntries;
     pendingExtractionResult = fields;
     pendingBarcode           = barcode;
     barcodeScanState         = silent ? null : (barcode ? null : 'missing');
@@ -980,19 +1038,19 @@ async function startVoucherScan(file, mimeType) {
 
   screen.querySelector('#scan-skip-btn').addEventListener('click', () => finish(null, null, { silent: true }));
 
-  const emptyCandidates = { img: null, imgW: 0, imgH: 0, candidates: [] };
+  const emptyCandidates = [];
   const emptyExtraction = { fields: null, rateLimited: false };
   const [extractionOutcome, candidatesOutcome] = await Promise.allSettled([
-    Promise.race([extractVoucherFields(file, mimeType), new Promise(resolve => setTimeout(() => resolve(emptyExtraction), 25000))]),
-    Promise.race([findBarcodeCandidates(file, mimeType), new Promise(resolve => setTimeout(() => resolve(emptyCandidates), 25000))]),
+    Promise.race([extractVoucherFields(fileEntries), new Promise(resolve => setTimeout(() => resolve(emptyExtraction), 25000))]),
+    Promise.race([findBarcodeCandidatesForFiles(fileEntries), new Promise(resolve => setTimeout(() => resolve(emptyCandidates), 25000))]),
   ]);
   const { fields, rateLimited } = extractionOutcome.status === 'fulfilled' ? extractionOutcome.value : emptyExtraction;
-  const { img, imgW, imgH, candidates } = candidatesOutcome.status === 'fulfilled' ? candidatesOutcome.value : emptyCandidates;
+  const candidates = candidatesOutcome.status === 'fulfilled' ? candidatesOutcome.value : emptyCandidates;
 
   // Now that extraction is done too, use its code field (if any) to pick
-  // the right candidate when the photo has more than one code on it.
+  // the right candidate when the photos have more than one code between them.
   const best = pickBestBarcodeCandidate(candidates, fields?.code);
-  const barcode = best && img ? await cropBarcodeCandidate(img, imgW, imgH, best) : null;
+  const barcode = best ? await cropBarcodeCandidate(best.img, best.imgW, best.imgH, best) : null;
 
   finish(fields, barcode, { rateLimited });
 }
@@ -1847,10 +1905,12 @@ function voucherCard(v, isGifted) {
     <div class="vc-info">
       <div class="vc-brand">${esc(v.brand)}</div>
       <div class="vc-code">${v.code ? '•••• ' + esc(v.code.slice(-4)) : '<span style="opacity:0.5">No code</span>'}</div>
-      ${isGifted ? `<div class="vc-listed-hint">Tap to manage gift</div>` : s === 'listed' ? `<div class="vc-listed-hint">Tap to unlist</div>` : ''}
+      ${isGifted ? `<div class="vc-listed-hint">Tap to manage gift</div>`
+        : s === 'listed' ? `<div class="vc-listed-hint">Tap to unlist</div>`
+        : v.giftMessage || v.giftSender ? `<div class="vc-note-hint">💌 Has a note</div>` : ''}
     </div>
     <div class="vc-right">
-      <div class="vc-value">${formatCurrency(displayAmount, v.currency, false)}</div>
+      <div class="vc-value${v.valueDescription ? ' vc-value-text' : ''}">${formatVoucherValue(v, displayAmount, false)}</div>
       <div class="vc-meta">${expiryMeta}</div>
       ${v.expiryDate ? `<div style="font-size:0.7rem;color:var(--text-muted);margin-top:2px">${formatMonthYear(v.expiryDate)}</div>` : ''}
     </div>
@@ -2032,6 +2092,55 @@ function barcodeGroupVisible(v) {
   return !!(pendingBarcode || (v?.barcodePath && !barcodeRemoved) || barcodeScanState);
 }
 
+// Not every voucher has a plain monetary value — some are for an experience
+// or item ("weekend getaway for two"). The two panels below share one
+// visible field at a time, switched client-side (see 'set-value-mode' in
+// handleAction) so unsaved input elsewhere in the form is never lost to a
+// re-render.
+function valueFieldsHtml(v) {
+  const mode = v?.valueDescription ? 'description' : 'amount';
+  return `
+  <div class="form-group">
+    <label>Value <span style="color:var(--danger)">*</span></label>
+    <div class="value-mode-toggle">
+      <button type="button" class="value-mode-btn ${mode === 'amount' ? 'active' : ''}" data-action="set-value-mode" data-mode="amount">€ Amount</button>
+      <button type="button" class="value-mode-btn ${mode === 'description' ? 'active' : ''}" data-action="set-value-mode" data-mode="description">Describe it</button>
+    </div>
+    <input type="hidden" name="valueMode" value="${mode}">
+    <div id="value-amount-panel" ${mode === 'description' ? 'style="display:none"' : ''}>
+      <input type="text" name="amount" placeholder="50,00" value="${esc(v?.value||'')}">
+    </div>
+    <div id="value-description-panel" ${mode === 'amount' ? 'style="display:none"' : ''}>
+      <input type="text" name="valueDescription" placeholder="e.g. Weekend getaway for two, Movie ticket" value="${esc(v?.valueDescription||'')}" maxlength="150">
+    </div>
+  </div>`;
+}
+
+// Personal gift note — kept collapsed and out of the way for the (more
+// common) plain voucher, so it never feels like a mandatory form field; it
+// only opens up when there's actually a note to add.
+function giftNoteFieldsHtml(v) {
+  const hasNote = !!(v?.giftMessage || v?.giftSender);
+  return `
+  <div class="form-group">
+    <div class="gift-note-prompt" data-action="toggle-gift-note" role="button" tabindex="0" ${hasNote ? 'style="display:none"' : ''}>
+      <span class="gift-note-prompt-icon">💌</span>
+      <div>
+        <div class="gift-note-prompt-title">Add a personal message</div>
+        <div class="gift-note-prompt-hint">Was this a gift? Save the note and who it's from</div>
+      </div>
+    </div>
+    <div class="gift-note-card" id="gift-note-fields" ${hasNote ? '' : 'style="display:none"'}>
+      <div class="gift-note-card-header">
+        <span>💌 A personal note</span>
+        <button type="button" class="gift-note-remove" data-action="remove-gift-note" title="Remove note">✕</button>
+      </div>
+      <textarea name="giftMessage" class="gift-note-textarea" placeholder="Happy Birthday! Enjoy 🎉" rows="3" maxlength="500">${esc(v?.giftMessage||'')}</textarea>
+      <input type="text" name="giftSender" class="gift-note-sender" placeholder="From… (e.g. Mom, Sarah &amp; Tom)" value="${esc(v?.giftSender||'')}" maxlength="100">
+    </div>
+  </div>`;
+}
+
 /* ============================================================
    VIEW: VOUCHER FORM (add / edit)
    ============================================================ */
@@ -2070,12 +2179,9 @@ function viewVoucherForm() {
         <span class="form-hint">Front &amp; back photos, or a PDF (JPG, PNG, WEBP, HEIC or PDF, max 10MB each)</span>
       </div>
 
-      <div class="form-group">
-        <label>Value (€) <span style="color:var(--danger)">*</span></label>
-        <input type="text" name="amount" placeholder="50,00" value="${esc(v?.value||'')}" required>
-      </div>
+      ${valueFieldsHtml(v)}
 
-      <div class="form-group">
+      <div class="form-group" id="balance-group" ${v?.valueDescription ? 'style="display:none"' : ''}>
         <label>Remaining Balance</label>
         <input type="text" name="balance" placeholder="Leave blank if full value remains" value="${esc(v?.balance??'')}">
         <span class="form-hint">Fill in only when a partial amount has already been used</span>
@@ -2105,6 +2211,8 @@ function viewVoucherForm() {
         <label>Notes / Terms &amp; Conditions</label>
         <textarea name="notes" placeholder="Any extra info, or the voucher's terms &amp; conditions…" rows="3">${esc(v?.notes||'')}</textarea>
       </div>
+
+      ${giftNoteFieldsHtml(v)}
 
       <div class="form-group">
         <label>Category</label>
@@ -2165,9 +2273,17 @@ function viewVoucherDetail() {
   <main class="content">
     <div class="voucher-detail-header" style="background:#13B5A2">
       <div class="vd-brand">${esc(v.brand)}</div>
-      <div class="vd-value">${formatCurrency(v.balance != null ? v.balance : v.value, v.currency)}</div>
+      <div class="vd-value${v.valueDescription ? ' vd-value-text' : ''}">${formatVoucherValue(v, v.balance != null ? v.balance : v.value)}</div>
       ${badge(s)}
     </div>
+
+    ${v.giftMessage || v.giftSender ? `
+    <div class="gift-note-display">
+      <div class="gift-note-display-icon">💌</div>
+      ${v.giftMessage ? `<p class="gift-note-display-message">${esc(v.giftMessage)}</p>` : ''}
+      ${v.giftSender ? `<p class="gift-note-display-sender">— ${esc(v.giftSender)}</p>` : ''}
+    </div>
+    ` : ''}
 
     ${v.barcodePath ? `
     <div class="barcode-display">
@@ -2220,6 +2336,12 @@ function viewVoucherDetail() {
         <div class="detail-item-label">Status</div>
         <div class="detail-item-value">${badge(s)}</div>
       </div>
+      ${v.valueDescription ? `
+      <div class="detail-item" style="grid-column:span 2">
+        <div class="detail-item-label">Value</div>
+        <div class="detail-item-value" style="font-weight:400;font-size:0.875rem">${esc(v.valueDescription)}</div>
+      </div>
+      ` : `
       <div class="detail-item">
         <div class="detail-item-label">Original Value</div>
         <div class="detail-item-value">${formatCurrency(v.value, v.currency)}</div>
@@ -2228,6 +2350,7 @@ function viewVoucherDetail() {
         <div class="detail-item-label">Remaining Balance</div>
         <div class="detail-item-value">${v.balance != null ? formatCurrency(v.balance, v.currency) : formatCurrency(v.value, v.currency)}</div>
       </div>
+      `}
       <div class="detail-item">
         <div class="detail-item-label">Category</div>
         <div class="detail-item-value">${esc(v.category || 'Other')}</div>
@@ -2251,7 +2374,7 @@ function viewVoucherDetail() {
       }
       ${s === 'listed'
         ? `<button class="btn btn-ghost" data-action="unlist" data-id="${esc(id)}">${icon.tag} Remove Listing</button>`
-        : (s === 'active' || s === 'expiring')
+        : (s === 'active' || s === 'expiring') && !v.valueDescription
           ? `<button class="btn btn-secondary" data-action="show-sell" data-id="${esc(id)}">${icon.tag} Sell</button>`
           : ''
       }
@@ -2261,7 +2384,7 @@ function viewVoucherDetail() {
       }
     </div>
 
-    ${s !== 'used' && s !== 'sold' ? `
+    ${s !== 'used' && s !== 'sold' && !v.valueDescription ? `
     <div style="margin-top:10px">
       <button class="btn btn-ghost btn-full" data-action="${showDeductForm ? 'hide-deduct' : 'show-deduct'}" data-id="${esc(id)}">
         ${icon.tag} ${showDeductForm ? 'Cancel' : 'Deduct Amount Used'}
@@ -2898,37 +3021,92 @@ function showConfirm({ title, message, confirmLabel, confirmClass = 'btn-danger'
 // the OS's own combined sheet with Take Photo / Photo Library / Browse
 // Files as options — so a separate "Take Photo" button just duplicated a
 // choice the native sheet already offers. Let the OS handle that split.
+// Camera capture only ever yields one photo per tap (there's no "take
+// several, then confirm" step on a file input), so front + back photos have
+// to be added one at a time. This stages them locally — nothing is scanned
+// until the user explicitly taps Scan — instead of firing startVoucherScan
+// the instant the first photo lands.
 function showAddVoucherMenu() {
   const overlay = document.createElement('div');
   overlay.className = 'overlay';
   overlay.innerHTML = `
   <div class="dialog">
     <h3>Add Voucher</h3>
-    <p>Scan a photo or PDF to auto-fill the details, or enter them yourself.</p>
-    <div class="dialog-actions" style="flex-direction:column;gap:8px">
-      <button type="button" class="btn btn-primary btn-full" id="menu-choose-file">Photo or File</button>
-      <button type="button" class="btn btn-ghost btn-full" id="menu-manual-entry">Manual Entry</button>
+    <div id="menu-initial">
+      <p>Scan a photo or PDF to auto-fill the details, or enter them yourself.</p>
+      <div class="dialog-actions" style="flex-direction:column;gap:8px">
+        <button type="button" class="btn btn-primary btn-full" id="menu-choose-file">Photo or File</button>
+        <button type="button" class="btn btn-ghost btn-full" id="menu-manual-entry">Manual Entry</button>
+      </div>
     </div>
-    <input type="file" id="menu-file-input" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,application/pdf" style="display:none">
+    <div id="menu-staging" style="display:none">
+      <p>Add more photos (e.g. front &amp; back with terms), then scan them together.</p>
+      <div class="attachment-grid" id="menu-staged-grid"></div>
+      <div class="dialog-actions" style="flex-direction:column;gap:8px;margin-top:12px">
+        <button type="button" class="btn btn-primary btn-full" id="menu-scan-btn">Scan</button>
+        <button type="button" class="btn btn-ghost btn-full" id="menu-add-more">${icon.plus2} Add another photo</button>
+        <button type="button" class="btn btn-ghost btn-full" id="menu-staging-cancel">Cancel</button>
+      </div>
+    </div>
+    <input type="file" id="menu-file-input" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,application/pdf" multiple style="display:none">
   </div>`;
   document.body.appendChild(overlay);
 
-  const closeMenu = () => overlay.remove();
+  const staged = []; // [{ file, mimeType, previewUrl }]
+
+  const closeMenu = () => {
+    staged.forEach(s => s.previewUrl && URL.revokeObjectURL(s.previewUrl));
+    overlay.remove();
+  };
   overlay.addEventListener('click', e => { if (e.target === overlay) closeMenu(); });
   overlay.querySelector('#menu-manual-entry').addEventListener('click', () => { closeMenu(); go('voucher-form'); });
+  overlay.querySelector('#menu-staging-cancel').addEventListener('click', closeMenu);
   overlay.querySelector('#menu-choose-file').addEventListener('click', () => overlay.querySelector('#menu-file-input').click());
+  overlay.querySelector('#menu-add-more').addEventListener('click', () => overlay.querySelector('#menu-file-input').click());
 
-  overlay.querySelectorAll('input[type=file]').forEach(input => {
-    input.addEventListener('change', () => {
-      const file = input.files[0];
-      input.value = '';
-      if (!file) return;
+  const renderStaged = () => {
+    const grid = overlay.querySelector('#menu-staged-grid');
+    grid.innerHTML = staged.map((s, i) => `
+      <div class="attachment-tile">
+        ${s.mimeType === 'application/pdf'
+          ? `<div class="attachment-file-icon">${icon.file}<span>PDF</span></div>`
+          : `<img class="attachment-thumb" src="${esc(s.previewUrl)}" alt="Photo ${i + 1}">`}
+        <button type="button" class="attachment-remove" data-staged-idx="${i}" title="Remove">✕</button>
+      </div>`).join('');
+    overlay.querySelector('#menu-scan-btn').textContent = staged.length > 1 ? `Scan ${staged.length} Photos` : 'Scan';
+    overlay.querySelector('#menu-initial').style.display = staged.length ? 'none' : '';
+    overlay.querySelector('#menu-staging').style.display = staged.length ? '' : 'none';
+  };
+
+  overlay.querySelector('#menu-staged-grid').addEventListener('click', e => {
+    const btn = e.target.closest('[data-staged-idx]');
+    if (!btn) return;
+    const [removed] = staged.splice(Number(btn.dataset.stagedIdx), 1);
+    if (removed?.previewUrl) URL.revokeObjectURL(removed.previewUrl);
+    renderStaged();
+  });
+
+  overlay.querySelector('#menu-scan-btn').addEventListener('click', () => {
+    if (!staged.length) return;
+    const fileEntries = staged.map(({ file, mimeType }) => ({ file, mimeType }));
+    staged.forEach(s => s.previewUrl && URL.revokeObjectURL(s.previewUrl)); // the raw File objects live on in fileEntries; only this menu's own preview URLs go
+    overlay.remove();
+    startVoucherScan(fileEntries);
+  });
+
+  overlay.querySelector('#menu-file-input').addEventListener('change', (e) => {
+    const input = e.target;
+    const selected = Array.from(input.files || []);
+    input.value = '';
+    if (!selected.length) return;
+    if (staged.length + selected.length > MAX_SCAN_FILES) { showToast(`Select up to ${MAX_SCAN_FILES} photos in total`); return; }
+    for (const file of selected) {
       const mimeType = resolveMimeType(file);
-      if (!ALLOWED_FILE_TYPES.includes(mimeType)) { showToast('Unsupported file type'); return; }
-      if (file.size > 10 * 1024 * 1024) { showToast(`${file.name} is over 10MB`); return; }
-      closeMenu();
-      startVoucherScan(file, mimeType);
-    });
+      if (!ALLOWED_FILE_TYPES.includes(mimeType)) { showToast('Unsupported file type'); continue; }
+      if (file.size > 10 * 1024 * 1024) { showToast(`${file.name} is over 10MB`); continue; }
+      staged.push({ file, mimeType, previewUrl: mimeType === 'application/pdf' ? null : URL.createObjectURL(file) });
+    }
+    renderStaged();
   });
 }
 
@@ -3093,7 +3271,7 @@ async function updatePushStatusLabel() {
 let _listenersAttached = false;
 let pendingNewFiles  = []; // [{ localId, file, mimeType, kind: 'image'|'pdf', previewUrl }] chosen in the voucher form, not yet uploaded
 let removedFileIds   = []; // ids of existing voucher_files rows queued for deletion on save
-let pendingExtractionFile   = null; // { file, mimeType } picked from the add-voucher menu, staged for go('voucher-form') to attach
+let pendingExtractionFiles  = null; // [{ file, mimeType }, ...] picked from the add-voucher menu, staged for go('voucher-form') to attach
 let pendingExtractionEntry  = null; // the pendingNewFiles entry whose AI-extracted fields still need applying after render
 let pendingExtractionResult = null; // fields already resolved by startVoucherScan, applied on the next voucher-form render
 let pendingBarcode  = null; // { blob, previewUrl } newly detected barcode/QR crop, not yet uploaded
@@ -3274,6 +3452,46 @@ async function handleAction(el, e) {
       e.preventDefault();
       const input = document.getElementById('voucher-expiry-input');
       if (input) input.value = '';
+      break;
+    }
+
+    // Plain DOM show/hide, not a state-driven re-render — the voucher form
+    // isn't backed by state.params, so a render() here would rebuild the
+    // whole form from the original voucher and drop any unsaved typing.
+    case 'set-value-mode': {
+      const mode = el.dataset.mode;
+      const form = el.closest('#form-voucher');
+      if (!form) break;
+      form.querySelectorAll('.value-mode-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
+      const modeInput = form.querySelector('[name="valueMode"]');
+      if (modeInput) modeInput.value = mode;
+      const amountPanel = form.querySelector('#value-amount-panel');
+      const descPanel   = form.querySelector('#value-description-panel');
+      const balanceGroup = form.querySelector('#balance-group');
+      if (amountPanel)  amountPanel.style.display  = mode === 'amount' ? '' : 'none';
+      if (descPanel)    descPanel.style.display    = mode === 'description' ? '' : 'none';
+      if (balanceGroup) balanceGroup.style.display = mode === 'description' ? 'none' : '';
+      break;
+    }
+
+    case 'toggle-gift-note': {
+      el.style.display = 'none';
+      const fields = document.getElementById('gift-note-fields');
+      if (fields) {
+        fields.style.display = '';
+        fields.querySelector('[name="giftMessage"]')?.focus();
+      }
+      break;
+    }
+
+    case 'remove-gift-note': {
+      const fields = document.getElementById('gift-note-fields');
+      if (fields) {
+        fields.style.display = 'none';
+        fields.querySelector('[name="giftMessage"]').value = '';
+        fields.querySelector('[name="giftSender"]').value = '';
+      }
+      document.querySelector('.gift-note-prompt')?.style.setProperty('display', '');
       break;
     }
 
@@ -3551,22 +3769,33 @@ async function handleSubmit(e) {
 
   if (form.id === 'form-voucher') {
     const d = formData(form);
-    const amount  = normalizeAmount(d.amount);
-    const balance = d.balance !== '' ? normalizeAmount(d.balance) : null;
-    if (!amount || isNaN(parseFloat(amount)) || parseFloat(amount) <= 0) { showToast('Enter a valid amount'); return; }
-    if (balance !== null && (isNaN(parseFloat(balance)) || parseFloat(balance) < 0)) { showToast('Enter a valid balance'); return; }
+    const valueMode = d.valueMode === 'description' ? 'description' : 'amount';
+    let amount = '', valueDescription = '', balance = null;
+    if (valueMode === 'amount') {
+      amount = normalizeAmount(d.amount);
+      if (!amount || isNaN(parseFloat(amount)) || parseFloat(amount) <= 0) { showToast('Enter a valid amount'); return; }
+      balance = d.balance !== '' ? normalizeAmount(d.balance) : null;
+      if (balance !== null && (isNaN(parseFloat(balance)) || parseFloat(balance) < 0)) { showToast('Enter a valid balance'); return; }
+    } else {
+      valueDescription = (d.valueDescription || '').trim();
+      if (!valueDescription) { showToast('Describe what this voucher is for'); return; }
+    }
     const btn = form.querySelector('[type=submit]');
     if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
     const data = {
-      brand:       d.brand.trim(),
-      value:       amount,
-      balance:     balance,
-      expiryDate:  d.expiryDate || null,
-      code:        d.code.trim(),
-      pin:         d.pin.trim(),
-      notes:       d.notes.trim(),
-      category:    d.category || 'Other',
-      voucherType: d.voucherType || 'gift_card',
+      brand:            d.brand.trim(),
+      valueMode,
+      value:            amount,
+      valueDescription,
+      balance:          balance,
+      expiryDate:       d.expiryDate || null,
+      code:             d.code.trim(),
+      pin:              d.pin.trim(),
+      notes:            d.notes.trim(),
+      category:         d.category || 'Other',
+      voucherType:      d.voucherType || 'gift_card',
+      giftMessage:      (d.giftMessage || '').trim(),
+      giftSender:       (d.giftSender || '').trim(),
     };
     if (d.voucherId) data.id = d.voucherId;
     const existingBarcodePath = d.voucherId ? (state.vouchers.find(v => v.id === d.voucherId)?.barcodePath || null) : null;
@@ -3710,9 +3939,16 @@ function showGiftRevealAnimation(voucher) {
         </div>
         <div class="gift-reveal-card" id="gift-reveal-card">
           <div class="gift-reveal-card-brand">${esc(voucher.brand)}</div>
-          <div class="gift-reveal-card-value">${formatCurrency(voucher.value, voucher.currency, false)}</div>
+          <div class="gift-reveal-card-value">${formatVoucherValue(voucher, voucher.value, false)}</div>
         </div>
       </div>
+      ${voucher.giftMessage || voucher.giftSender ? `
+      <div class="gift-note-display gift-reveal-note">
+        <div class="gift-note-display-icon">💌</div>
+        ${voucher.giftMessage ? `<p class="gift-note-display-message">${esc(voucher.giftMessage)}</p>` : ''}
+        ${voucher.giftSender ? `<p class="gift-note-display-sender">— ${esc(voucher.giftSender)}</p>` : ''}
+      </div>
+      ` : ''}
       <h3 class="gift-reveal-caption">You received a gift!</h3>
       <p class="gift-reveal-subcaption">${esc(voucher.brand)} is now in your wallet.</p>
       <button type="button" class="btn btn-primary gift-reveal-continue" id="gift-reveal-continue" style="visibility:hidden">Awesome!</button>
@@ -3762,14 +3998,21 @@ async function tryClaimPendingGift() {
   await fetchFriends(); // claiming auto-friends sender and recipient server-side
   const { data: row, error: fetchErr } = await supabase
     .from('vouchers')
-    .select('brand, amount, currency')
+    .select('brand, amount, currency, value_description, gift_message, gift_sender')
     .eq('id', voucherId)
     .maybeSingle();
   if (fetchErr || !row) {
     setTimeout(() => showToast('🎁 You received a voucher from a friend!'), 300);
     return;
   }
-  await showGiftRevealAnimation({ brand: row.brand, value: row.amount, currency: row.currency });
+  await showGiftRevealAnimation({
+    brand:            row.brand,
+    value:            row.amount,
+    currency:         row.currency,
+    valueDescription: row.value_description,
+    giftMessage:      row.gift_message,
+    giftSender:       row.gift_sender,
+  });
 }
 
 async function init() {

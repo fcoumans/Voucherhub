@@ -58,6 +58,20 @@ CREATE POLICY "users_update" ON public.users
 -- ============================================================
 ALTER TABLE public.vouchers ADD COLUMN IF NOT EXISTS barcode_path TEXT;
 
+-- Not every voucher has a monetary face value (e.g. "weekend getaway for
+-- two", "movie ticket") — amount becomes optional, with a free-text
+-- description as the alternative. One of the two must be present.
+ALTER TABLE public.vouchers ALTER COLUMN amount DROP NOT NULL;
+ALTER TABLE public.vouchers ADD COLUMN IF NOT EXISTS value_description TEXT;
+ALTER TABLE public.vouchers DROP CONSTRAINT IF EXISTS vouchers_value_present_check;
+ALTER TABLE public.vouchers ADD CONSTRAINT vouchers_value_present_check
+  CHECK (amount IS NOT NULL OR value_description IS NOT NULL);
+
+-- Optional personal note some vouchers arrive with (a gift message + who
+-- it's from) — read by AI extraction when visible, or entered manually.
+ALTER TABLE public.vouchers ADD COLUMN IF NOT EXISTS gift_message TEXT;
+ALTER TABLE public.vouchers ADD COLUMN IF NOT EXISTS gift_sender  TEXT;
+
 ALTER TABLE public.vouchers ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "vouchers_select" ON public.vouchers;
@@ -258,8 +272,9 @@ CREATE POLICY "notifications_delete" ON public.notifications
   FOR DELETE TO authenticated USING (user_id = auth.uid());
 
 -- ============================================================
--- public.voucher_extraction_log  (rate-limiting + audit trail for
--- AI voucher extraction — metadata only, never field values)
+-- public.voucher_extraction_log  (audit trail for AI voucher
+-- extraction — metadata only, never field values; no rate limit
+-- is currently enforced against it, see extract-voucher/index.ts)
 -- ============================================================
 CREATE TABLE IF NOT EXISTS public.voucher_extraction_log (
   id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),

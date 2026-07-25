@@ -361,10 +361,11 @@ GRANT EXECUTE ON FUNCTION public.claim_voucher_gift(UUID) TO authenticated;
 -- (bucket + original path-prefix policies were created outside this
 -- tracked file; recorded here now because claim_voucher_gift above
 -- needed select/update/delete extended to also recognize ownership
--- transferred via voucher_files.user_id, not just the path prefix —
--- otherwise a gift recipient could see the voucher but never actually
--- open its attached photo, since files stay at their original
--- ${uploaderId}/... path rather than being physically moved on claim)
+-- transferred via voucher_files.user_id or vouchers.barcode_path, not
+-- just the path prefix — otherwise a gift recipient could see the
+-- voucher but never actually open its attached photo or barcode
+-- crop, since files stay at their original ${uploaderId}/... path
+-- rather than being physically moved on claim)
 -- ============================================================
 DROP POLICY IF EXISTS "voucher_photos_select" ON storage.objects;
 DROP POLICY IF EXISTS "voucher_photos_update" ON storage.objects;
@@ -375,6 +376,7 @@ CREATE POLICY "voucher_photos_select" ON storage.objects
     bucket_id = 'voucher-photos' AND (
       (storage.foldername(name))[1] = auth.uid()::text
       OR EXISTS (SELECT 1 FROM public.voucher_files vf WHERE vf.file_path = name AND vf.user_id = auth.uid())
+      OR EXISTS (SELECT 1 FROM public.vouchers v WHERE v.barcode_path = name AND v.user_id = auth.uid())
     )
   );
 
@@ -383,6 +385,7 @@ CREATE POLICY "voucher_photos_update" ON storage.objects
     bucket_id = 'voucher-photos' AND (
       (storage.foldername(name))[1] = auth.uid()::text
       OR EXISTS (SELECT 1 FROM public.voucher_files vf WHERE vf.file_path = name AND vf.user_id = auth.uid())
+      OR EXISTS (SELECT 1 FROM public.vouchers v WHERE v.barcode_path = name AND v.user_id = auth.uid())
     )
   );
 
@@ -391,6 +394,7 @@ CREATE POLICY "voucher_photos_delete" ON storage.objects
     bucket_id = 'voucher-photos' AND (
       (storage.foldername(name))[1] = auth.uid()::text
       OR EXISTS (SELECT 1 FROM public.voucher_files vf WHERE vf.file_path = name AND vf.user_id = auth.uid())
+      OR EXISTS (SELECT 1 FROM public.vouchers v WHERE v.barcode_path = name AND v.user_id = auth.uid())
     )
   );
 

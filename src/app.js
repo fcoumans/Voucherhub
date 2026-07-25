@@ -3,7 +3,7 @@ import { supabase } from './lib/supabase.js';
 /* ============================================================
    CONFIG
    ============================================================ */
-const CATEGORIES = ['Food & Drink', 'Shopping', 'Travel', 'Entertainment', 'Finance', 'Sports & Fitness', 'Beauty & Wellness', 'Mobility', 'Other'];
+const CATEGORIES = ['Food & Drink', 'Shopping', 'Travel', 'Entertainment', 'Finance', 'Sports and Health', 'Beauty & Wellness', 'Mobility', 'Other'];
 const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY;
 function getReferralCategories() {
   const cats = [...new Set(state.referrals.map(r => r.category).filter(c => c && c !== 'Other'))].sort();
@@ -2227,7 +2227,6 @@ function viewVoucherForm() {
           <option value="gift_card" ${(v?.voucherType||'gift_card')==='gift_card'?'selected':''}>Gift Card</option>
           <option value="store_credit" ${v?.voucherType==='store_credit'?'selected':''}>Store Credit</option>
         </select>
-        <span class="form-hint">Store credit cannot be listed on the marketplace</span>
       </div>
 
       <div style="display:flex;gap:10px;margin-top:4px">
@@ -2664,8 +2663,11 @@ function viewReferrals() {
     pool = all.filter(r => r.userId === uid);
   }
 
-  // Tab counts scope to the selected brand once you've drilled into one
-  const countPool    = brand ? all.filter(r => r.brand === brand) : all;
+  // Tab counts scope to the selected brand once you've drilled into one, or
+  // to the selected category chip while still browsing the brand grid.
+  const countPool    = brand
+    ? all.filter(r => r.brand === brand)
+    : catFilter !== 'All' ? all.filter(r => r.category === catFilter) : all;
   const myCount      = countPool.filter(r => r.userId === uid).length;
   const friendsCount = countPool.filter(r => friendIds.includes(r.userId) || (r.userId === uid && r.visibility === 'friends')).length;
   const publicCount  = countPool.filter(r => r.visibility === 'public').length;

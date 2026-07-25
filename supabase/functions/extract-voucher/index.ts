@@ -22,7 +22,7 @@ const MAX_FILE_BYTES = 10 * 1024 * 1024;
 const MAX_FILES_PER_REQUEST = 5; // e.g. front + back of a voucher, generously capped
 
 // Mirrors src/app.js CATEGORIES — kept in sync manually.
-const CATEGORIES = ['Food & Drink', 'Shopping', 'Travel', 'Entertainment', 'Finance', 'Sports & Fitness', 'Beauty & Wellness', 'Mobility', 'Other'];
+const CATEGORIES = ['Food & Drink', 'Shopping', 'Travel', 'Entertainment', 'Finance', 'Sports and Health', 'Beauty & Wellness', 'Mobility', 'Other'];
 const VOUCHER_TYPES = ['gift_card', 'store_credit'];
 
 function fileKind(mimeType: string): 'pdf' | 'image' {

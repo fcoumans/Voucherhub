@@ -1769,7 +1769,7 @@ function viewHome() {
     <section class="home-section">
       <h3 class="section-title">${icon.clock} Expiring Soon</h3>
       <div class="voucher-list" style="margin-top:10px">
-        ${expiring.map(voucherCard).join('')}
+        ${expiring.map(v => voucherCard(v)).join('')}
       </div>
     </section>
     ` : ''}
@@ -1805,7 +1805,7 @@ function viewHome() {
         <button class="link-btn" data-nav="vouchers">See all</button>
       </div>
       <div class="voucher-list">
-        ${active.slice(0, 3).map(voucherCard).join('')}
+        ${active.slice(0, 3).map(v => voucherCard(v)).join('')}
       </div>
     </section>
     ` : vouchers.length === 0 ? `

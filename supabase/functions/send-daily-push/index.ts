@@ -2,7 +2,12 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import webpush from 'https://esm.sh/web-push@3';
 
 const SUPABASE_URL        = Deno.env.get('SUPABASE_URL')!;
-const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+// SUPABASE_SERVICE_ROLE_KEY is a reserved, platform-managed secret name that
+// can't be overridden from the dashboard, and on this project now resolves
+// to the new sb_secret_... key format, which doesn't carry service_role
+// (RLS-bypassing) privileges the way the legacy JWT does. Using our own
+// secret name instead, holding that legacy service_role JWT explicitly.
+const SUPABASE_SERVICE_KEY = Deno.env.get('SERVICE_ROLE_KEY')!;
 const VAPID_PUBLIC_KEY    = Deno.env.get('VAPID_PUBLIC_KEY')!;
 const VAPID_PRIVATE_KEY   = Deno.env.get('VAPID_PRIVATE_KEY')!;
 
@@ -10,7 +15,22 @@ webpush.setVapidDetails('mailto:fien.coumans@gmail.com', VAPID_PUBLIC_KEY, VAPID
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
-const THRESHOLDS = [30, 7, 2, 1];
+// A month, a week, and a day before expiry.
+const THRESHOLDS = [30, 7, 1];
+
+// Reminder date/time is stored exactly as picked in the user's own local
+// wall-clock (from a <input type="datetime-local">, which carries no
+// timezone info) — so "now" must be read in that same timezone, not UTC,
+// or every comparison is off by the local UTC offset.
+const APP_TIMEZONE = 'Europe/Brussels';
+
+function todayLocalDateStr(): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: APP_TIMEZONE, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+}
+
+function nowLocalHHMM(): string {
+  return new Intl.DateTimeFormat('en-GB', { timeZone: APP_TIMEZONE, hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date());
+}
 
 function daysUntil(dateStr: string): number {
   const today = new Date();
@@ -22,7 +42,6 @@ function daysUntil(dateStr: string): number {
 
 function buildMessage(brand: string, days: number): { title: string; body: string } {
   if (days === 1) return { title: 'VoucherWise', body: `Your ${brand} voucher expires tomorrow!` };
-  if (days === 2) return { title: 'VoucherWise', body: `Your ${brand} voucher expires in 2 days.` };
   if (days === 7) return { title: 'VoucherWise', body: `Your ${brand} voucher expires in 1 week.` };
   return { title: 'VoucherWise', body: `Your ${brand} voucher expires in 1 month.` };
 }
@@ -57,21 +76,21 @@ Deno.serve(async (req) => {
     return new Response('Unauthorized', { status: 401 });
   }
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = todayLocalDateStr();
   let sent = 0;
   let skipped = 0;
 
   // --- Expiry reminders ---
   const { data: vouchers, error: vErr } = await supabase
     .from('vouchers')
-    .select('id, user_id, brand, expiry_date')
+    .select('id, user_id, brand, expiration_date')
     .eq('status', 'active')
-    .not('expiry_date', 'is', null);
+    .not('expiration_date', 'is', null);
 
   if (vErr) return new Response(JSON.stringify({ error: vErr.message }), { status: 500 });
 
   for (const voucher of (vouchers ?? [])) {
-    const days = daysUntil(voucher.expiry_date);
+    const days = daysUntil(voucher.expiration_date);
     if (!THRESHOLDS.includes(days)) { skipped++; continue; }
 
     const { data: logged } = await supabase
@@ -107,11 +126,8 @@ Deno.serve(async (req) => {
   if (rErr) console.error('fetchReminders error:', rErr.message);
 
   for (const r of (manualReminders ?? [])) {
-    // If a specific time was set, only send once we've passed that hour (UTC comparison)
-    if (r.reminder_time) {
-      const nowHHMM = new Date().toISOString().slice(11, 16); // 'HH:MM' UTC
-      if (r.reminder_time.slice(0, 5) > nowHHMM) { skipped++; continue; }
-    }
+    // If a specific time was set, only send once we've passed that local hour.
+    if (r.reminder_time && r.reminder_time.slice(0, 5) > nowLocalHHMM()) { skipped++; continue; }
 
     const { data: voucher } = await supabase
       .from('vouchers')

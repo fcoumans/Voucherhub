@@ -56,11 +56,8 @@ function describeExpiry(days: number): string | null {
   return `expires in ${months} month${months !== 1 ? 's' : ''}`;
 }
 
-// Title is the brand itself (not "VoucherWise") — the PWA's own name
-// already shows alongside it, so repeating it there just reads as
-// "VoucherWise from VoucherWise".
 function buildMessage(brand: string, days: number): { title: string; body: string } {
-  return { title: brand, body: `${describeExpiry(days) ?? 'is waiting for you'}!` };
+  return { title: 'VoucherWise', body: `Your ${brand} voucher ${describeExpiry(days) ?? 'is waiting for you'}!` };
 }
 
 async function sendPush(userId: string, payload: string): Promise<number> {
@@ -158,8 +155,8 @@ Deno.serve(async (req) => {
     const brand = voucher?.brand || 'voucher';
     const expiryPhrase = voucher?.expiration_date ? describeExpiry(daysUntil(voucher.expiration_date)) : null;
     const payload = JSON.stringify({
-      title: brand,
-      body: `${expiryPhrase ?? 'is waiting for you'}!`,
+      title: 'VoucherWise',
+      body: `Your ${brand} voucher ${expiryPhrase ?? 'is waiting for you'}!`,
       url: `/`,
     });
 

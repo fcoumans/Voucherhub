@@ -93,9 +93,10 @@ const brandColor = () => '#13B5A2';
 
 const initial = (name) => (name || '?').charAt(0).toUpperCase();
 
-const formatCurrency = (amount, currency = 'EUR') => {
+const formatCurrency = (amount, currency = 'EUR', showDecimals = true) => {
   const sym = { EUR: '€', USD: '$', GBP: '£', CHF: 'CHF ', SEK: 'kr', NOK: 'kr', DKK: 'kr' };
-  const formatted = parseFloat(amount || 0).toLocaleString('nl-NL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const digits = showDecimals ? 2 : 0;
+  const formatted = parseFloat(amount || 0).toLocaleString('nl-NL', { minimumFractionDigits: digits, maximumFractionDigits: digits });
   return (sym[currency] || currency + ' ') + formatted;
 };
 
@@ -1723,7 +1724,8 @@ function viewAuth() {
    VIEW: HOME
    ============================================================ */
 function viewHome() {
-  const vouchers  = state.vouchers;
+  const giftedIds = new Set(state.pendingGifts.map(g => g.voucher_id));
+  const vouchers  = state.vouchers.filter(v => !giftedIds.has(v.id));
   const expiring  = vouchers.filter(v => getStatus(v) === 'expiring');
   const active    = vouchers.filter(v => getStatus(v) === 'active');
   const total     = [...active, ...expiring].reduce((s, v) => s + parseFloat((v.balance ?? v.value) || 0), 0);
@@ -1848,7 +1850,7 @@ function voucherCard(v, isGifted) {
       ${isGifted ? `<div class="vc-listed-hint">Tap to manage gift</div>` : s === 'listed' ? `<div class="vc-listed-hint">Tap to unlist</div>` : ''}
     </div>
     <div class="vc-right">
-      <div class="vc-value">${formatCurrency(displayAmount, v.currency)}</div>
+      <div class="vc-value">${formatCurrency(displayAmount, v.currency, false)}</div>
       <div class="vc-meta">${expiryMeta}</div>
       ${v.expiryDate ? `<div style="font-size:0.7rem;color:var(--text-muted);margin-top:2px">${formatMonthYear(v.expiryDate)}</div>` : ''}
     </div>
@@ -1966,7 +1968,7 @@ function viewPendingGifts() {
       <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
         <div>
           <div style="font-weight:700">${esc(v.brand)}</div>
-          <div class="text-muted text-xs">${formatCurrency(v.value, v.currency)} · sent ${formatDate(g.created_at?.slice(0, 10))}</div>
+          <div class="text-muted text-xs">${formatCurrency(v.value, v.currency, false)} · sent ${formatDate(g.created_at?.slice(0, 10))}</div>
         </div>
         <div style="display:flex;gap:8px">
           <button type="button" class="btn btn-secondary btn-sm" data-action="show-gift-qr" data-id="${esc(g.id)}" data-voucher-id="${esc(v.id)}">${icon.link} Link</button>
@@ -2356,8 +2358,8 @@ function listingCard(l, isOwn = false) {
       ${days !== null && days < 0 ? `<div class="text-xs text-danger" style="margin-top:2px">Expired</div>` : ''}
     </div>
     <div class="lc-right">
-      <div class="lc-price">${formatCurrency(l.sellingPrice, l.currency)}</div>
-      <div class="lc-original">${formatCurrency(l.originalValue, l.currency)}</div>
+      <div class="lc-price">${formatCurrency(l.sellingPrice, l.currency, false)}</div>
+      <div class="lc-original">${formatCurrency(l.originalValue, l.currency, false)}</div>
       ${disc > 0 ? `<div class="discount-badge">-${disc}%</div>` : ''}
     </div>
   </div>`;
@@ -2800,7 +2802,7 @@ function viewProfile() {
           <div class="kpi-unit">voucher${list.length !== 1 ? 's' : ''}</div>
         </div>
         <div class="kpi-stat">
-          <div class="kpi-value">${formatCurrency(valueOf(list), 'EUR')}</div>
+          <div class="kpi-value">${formatCurrency(valueOf(list), 'EUR', false)}</div>
           <div class="kpi-unit">value</div>
         </div>
       </div>
@@ -3708,7 +3710,7 @@ function showGiftRevealAnimation(voucher) {
         </div>
         <div class="gift-reveal-card" id="gift-reveal-card">
           <div class="gift-reveal-card-brand">${esc(voucher.brand)}</div>
-          <div class="gift-reveal-card-value">${formatCurrency(voucher.value, voucher.currency)}</div>
+          <div class="gift-reveal-card-value">${formatCurrency(voucher.value, voucher.currency, false)}</div>
         </div>
       </div>
       <h3 class="gift-reveal-caption">You received a gift!</h3>

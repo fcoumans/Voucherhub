@@ -56,8 +56,12 @@ function describeExpiry(days: number): string | null {
   return `expires in ${months} month${months !== 1 ? 's' : ''}`;
 }
 
+// Title shows up in the OS notification as "{title} from VoucherWise" (the
+// browser/PWA always appends its own name for trust/attribution, which
+// can't be turned off) — so the title itself should read naturally with
+// that suffix rather than repeat "VoucherWise".
 function buildMessage(brand: string, days: number): { title: string; body: string } {
-  return { title: 'VoucherWise', body: `Your ${brand} voucher ${describeExpiry(days) ?? 'is waiting for you'}!` };
+  return { title: 'Reminder', body: `Your ${brand} voucher ${describeExpiry(days) ?? 'is waiting for you'}!` };
 }
 
 async function sendPush(userId: string, payload: string): Promise<number> {
@@ -155,7 +159,7 @@ Deno.serve(async (req) => {
     const brand = voucher?.brand || 'voucher';
     const expiryPhrase = voucher?.expiration_date ? describeExpiry(daysUntil(voucher.expiration_date)) : null;
     const payload = JSON.stringify({
-      title: 'VoucherWise',
+      title: 'Reminder',
       body: `Your ${brand} voucher ${expiryPhrase ?? 'is waiting for you'}!`,
       url: `/`,
     });

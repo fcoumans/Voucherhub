@@ -350,6 +350,18 @@ BEGIN
   UPDATE public.voucher_gifts SET status = 'claimed', claimed_by = auth.uid(), claimed_at = now()
     WHERE id = v_gift.id;
 
+  -- Claiming a gift is a deliberate, mutual act (sender chose this person to
+  -- gift to; recipient chose to claim), so skip the normal pending-request
+  -- step and land them straight in each other's friends list.
+  IF NOT EXISTS (
+    SELECT 1 FROM public.friendships
+    WHERE (requester_id = v_gift.sender_id AND receiver_id = auth.uid())
+       OR (requester_id = auth.uid() AND receiver_id = v_gift.sender_id)
+  ) THEN
+    INSERT INTO public.friendships (requester_id, receiver_id, status)
+    VALUES (v_gift.sender_id, auth.uid(), 'accepted');
+  END IF;
+
   RETURN v_gift.voucher_id;
 END;
 $$;

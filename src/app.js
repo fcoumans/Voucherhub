@@ -1823,11 +1823,13 @@ function viewHome() {
 /* ============================================================
    VIEW: VOUCHERS
    ============================================================ */
-function voucherCard(v) {
+function voucherCard(v, isGifted) {
   const s = getStatus(v);
   const days = v.expiryDate ? daysUntil(v.expiryDate) : null;
   let expiryMeta = badge(s);
-  if (s !== 'listed' && days !== null) {
+  if (isGifted) {
+    expiryMeta = `<span class="text-xs" style="color:var(--accent)">${icon.gift} Gifted</span>`;
+  } else if (s !== 'listed' && days !== null) {
     if (days < 0)        expiryMeta = `<span class="text-danger text-xs">Expired</span>`;
     else if (days === 0) expiryMeta = `<span class="text-warning text-xs">Today!</span>`;
     else if (days <= 7)  expiryMeta = `<span class="text-warning text-xs">${days}d left</span>`;
@@ -1835,14 +1837,15 @@ function voucherCard(v) {
     else                 expiryMeta = badge(s);
   }
   const displayAmount = v.balance != null ? v.balance : v.value;
+  const nav = isGifted ? 'pending-gifts' : 'voucher-detail';
 
   return `
-  <div class="voucher-card status-${s}" data-nav="voucher-detail" data-id="${esc(v.id)}">
+  <div class="voucher-card status-${s}" data-nav="${nav}" data-id="${esc(v.id)}">
     ${avatar(v.brand)}
     <div class="vc-info">
       <div class="vc-brand">${esc(v.brand)}</div>
       <div class="vc-code">${v.code ? '•••• ' + esc(v.code.slice(-4)) : '<span style="opacity:0.5">No code</span>'}</div>
-      ${s === 'listed' ? `<div class="vc-listed-hint">Tap to unlist</div>` : ''}
+      ${isGifted ? `<div class="vc-listed-hint">Tap to manage gift</div>` : s === 'listed' ? `<div class="vc-listed-hint">Tap to unlist</div>` : ''}
     </div>
     <div class="vc-right">
       <div class="vc-value">${formatCurrency(displayAmount, v.currency)}</div>
@@ -1859,10 +1862,12 @@ function viewVouchers() {
   // Vouchers with a pending gift are hidden from the normal wallet — they
   // live in the Pending Gifts list until claimed or cancelled.
   const giftedIds = new Set(state.pendingGifts.map(g => g.voucher_id));
-  let vouchers = state.vouchers.filter(v => !giftedIds.has(v.id));
+  let vouchers = filter === 'gifted'
+    ? state.vouchers.filter(v => giftedIds.has(v.id))
+    : state.vouchers.filter(v => !giftedIds.has(v.id));
 
   if (q) vouchers = vouchers.filter(v => v.brand.toLowerCase().includes(q) || (v.code||'').toLowerCase().includes(q));
-  if (filter !== 'all') vouchers = vouchers.filter(v => {
+  if (filter !== 'all' && filter !== 'gifted') vouchers = vouchers.filter(v => {
     const s = getStatus(v);
     if (filter === 'active') return s === 'active' || s === 'expiring';
     return s === filter;
@@ -1895,7 +1900,7 @@ function viewVouchers() {
   }
 
   const allV   = state.vouchers.filter(v => !giftedIds.has(v.id));
-  const counts = { all: allV.length, active: 0, expiring: 0, expired: 0, used: 0, listed: 0 };
+  const counts = { all: allV.length, active: 0, expiring: 0, expired: 0, used: 0, listed: 0, gifted: giftedIds.size };
   allV.forEach(v => {
     const s = getStatus(v);
     if (s === 'active' || s === 'expiring') counts.active++;
@@ -1925,6 +1930,7 @@ function viewVouchers() {
           { id: 'expired',  label: `Expired (${counts.expired})` },
           { id: 'used',     label: `Used (${counts.used})` },
           { id: 'listed',   label: `Listed (${counts.listed})` },
+          { id: 'gifted',   label: `🎁 Gifted (${counts.gifted})` },
         ].map(f => `<button class="chip ${filter === f.id ? 'active' : ''}" data-filter="${f.id}">${f.label}</button>`).join('')}
       </div>
       <select class="sort-select" data-sort title="Sort">
@@ -1935,12 +1941,12 @@ function viewVouchers() {
     </div>
 
     ${vouchers.length > 0
-      ? `<div class="voucher-list">${vouchers.map(voucherCard).join('')}</div>`
+      ? `<div class="voucher-list">${vouchers.map(v => voucherCard(v, filter === 'gifted')).join('')}</div>`
       : `<div class="empty-state">
-          <div class="empty-icon">${counts.all === 0 ? navIcons.vouchers : icon.search}</div>
-          <h3>${counts.all === 0 ? 'No vouchers yet' : 'No results found'}</h3>
-          <p>${counts.all === 0 ? 'Add vouchers to manage them in one place' : 'Try a different search or filter'}</p>
-          ${counts.all === 0 ? '<button class="btn btn-primary" data-action="add-voucher-menu">Add Your First Voucher</button>' : ''}
+          <div class="empty-icon">${filter === 'gifted' ? icon.gift : (counts.all === 0 ? navIcons.vouchers : icon.search)}</div>
+          <h3>${filter === 'gifted' ? 'No pending gifts' : (counts.all === 0 ? 'No vouchers yet' : 'No results found')}</h3>
+          <p>${filter === 'gifted' ? 'Vouchers you gift will show here until claimed' : (counts.all === 0 ? 'Add vouchers to manage them in one place' : 'Try a different search or filter')}</p>
+          ${counts.all === 0 && filter !== 'gifted' ? '<button class="btn btn-primary" data-action="add-voucher-menu">Add Your First Voucher</button>' : ''}
         </div>`
     }
   </main>
@@ -3751,6 +3757,7 @@ async function tryClaimPendingGift() {
     setTimeout(() => showToast(error.message || 'This gift link is no longer valid'), 300);
     return;
   }
+  await fetchFriends(); // claiming auto-friends sender and recipient server-side
   const { data: row, error: fetchErr } = await supabase
     .from('vouchers')
     .select('brand, amount, currency')

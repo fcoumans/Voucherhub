@@ -40,10 +40,27 @@ function daysUntil(dateStr: string): number {
   return Math.round((expiry.getTime() - today.getTime()) / 86_400_000);
 }
 
+// Null once a voucher is far enough out that a specific countdown isn't
+// useful — the caller falls back to a plain "is waiting for you" instead.
+function describeExpiry(days: number): string | null {
+  if (days > 90) return null;
+  if (days < 0) return 'has expired';
+  if (days === 0) return 'expires today';
+  if (days === 1) return 'expires tomorrow';
+  if (days <= 6) return `expires in ${days} days`;
+  if (days <= 27) {
+    const weeks = Math.round(days / 7);
+    return `expires in ${weeks} week${weeks !== 1 ? 's' : ''}`;
+  }
+  const months = Math.round(days / 30);
+  return `expires in ${months} month${months !== 1 ? 's' : ''}`;
+}
+
+// Title is the brand itself (not "VoucherWise") — the PWA's own name
+// already shows alongside it, so repeating it there just reads as
+// "VoucherWise from VoucherWise".
 function buildMessage(brand: string, days: number): { title: string; body: string } {
-  if (days === 1) return { title: 'VoucherWise', body: `Your ${brand} voucher expires tomorrow!` };
-  if (days === 7) return { title: 'VoucherWise', body: `Your ${brand} voucher expires in 1 week.` };
-  return { title: 'VoucherWise', body: `Your ${brand} voucher expires in 1 month.` };
+  return { title: brand, body: `${describeExpiry(days) ?? 'is waiting for you'}!` };
 }
 
 async function sendPush(userId: string, payload: string): Promise<number> {
@@ -134,14 +151,15 @@ Deno.serve(async (req) => {
 
     const { data: voucher } = await supabase
       .from('vouchers')
-      .select('brand')
+      .select('brand, expiration_date')
       .eq('id', r.voucher_id)
       .maybeSingle();
 
     const brand = voucher?.brand || 'voucher';
+    const expiryPhrase = voucher?.expiration_date ? describeExpiry(daysUntil(voucher.expiration_date)) : null;
     const payload = JSON.stringify({
-      title: 'VoucherWise',
-      body: `Reminder: your ${brand} voucher`,
+      title: brand,
+      body: `${expiryPhrase ?? 'is waiting for you'}!`,
       url: `/`,
     });
 

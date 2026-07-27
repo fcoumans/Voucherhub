@@ -23,7 +23,8 @@ const state = {
   listings:   [],   // marketplace_listings rows
   referrals:  [],   // referral_codes rows
   friends:         [],   // user objects { id, name, email }
-  friendIds:       [],   // UUID array for quick lookup
+  friendIds:       [],   // UUID array for quick lookup — direct (1st-degree) friends only
+  trustedNetworkIds: [], // UUID array — friends + friends of friends, for Trusted Community
   pendingRequests: [],   // incoming friend requests { id, requesterId, name, email }
   reminders:  [],   // notifications rows
   voucherFiles: [],  // voucher_files rows for the voucher currently open (form or detail)
@@ -36,6 +37,7 @@ const state = {
   referralBrandFilter: null,      // null = brand grid, 'BrandName' = code list for that brand
   referralCategoryFilter: 'All',  // category chip filter within the referral brand grid
   referralVotes: {},              // { [referralId]: 'up' | 'down' } — in-memory, no DB column yet
+  myReferralUses: new Set(),      // referral_code ids the current user has marked "+1 used"
 };
 
 /* ============================================================
@@ -93,6 +95,17 @@ const brandColor = () => '#13B5A2';
 
 const initial = (name) => (name || '?').charAt(0).toUpperCase();
 
+// Title-cases every space/hyphen-separated segment (e.g. "jean-pierre" ->
+// "Jean-Pierre", "van der berg" -> "Van Der Berg") — matches the initcap()
+// normalization applied server-side in the handle_new_user trigger.
+const toTitleCase = (str) =>
+  String(str ?? '').trim().split(/\s+/).filter(Boolean)
+    .map(word => word.split('-').map(seg => seg ? seg.charAt(0).toUpperCase() + seg.slice(1).toLowerCase() : seg).join('-'))
+    .join(' ');
+
+// public_profiles rows expose first_name/last_name instead of a single name.
+const fullName = (row) => [row?.first_name, row?.last_name].filter(Boolean).join(' ').trim();
+
 const formatCurrency = (amount, currency = 'EUR', showDecimals = true) => {
   const sym = { EUR: '€', USD: '$', GBP: '£', CHF: 'CHF ', SEK: 'kr', NOK: 'kr', DKK: 'kr' };
   const digits = showDecimals ? 2 : 0;
@@ -134,15 +147,41 @@ const formData = (form) => Object.fromEntries(new FormData(form));
    USER MAPPING
    ============================================================ */
 function mapUser(supabaseUser) {
+  const firstName = supabaseUser.user_metadata?.first_name || '';
+  const lastName  = supabaseUser.user_metadata?.last_name || '';
   return {
-    id:    supabaseUser.id,
-    name:  supabaseUser.user_metadata?.name || supabaseUser.email.split('@')[0],
-    email: supabaseUser.email,
+    id:        supabaseUser.id,
+    firstName, lastName,
+    name:      [firstName, lastName].filter(Boolean).join(' ').trim() || supabaseUser.email.split('@')[0],
+    email:     supabaseUser.email,
   };
 }
 
 // syncUserToSupabase disabled — public.users not queried until RLS/schema is confirmed
 function syncUserToSupabase() {}
+
+// Fire-and-forget: stamps last_active_at whenever a session starts (login,
+// signup, or an existing session resuming on app load). Never blocks the
+// auth flow on this — a failure here shouldn't stop the user from logging in.
+let _lastActivityTouchAt = 0;
+function touchLastActive(userId) {
+  _lastActivityTouchAt = Date.now();
+  supabase.from('users').update({ last_active_at: new Date().toISOString() }).eq('id', userId)
+    .then(({ error }) => { if (error) console.error('touchLastActive error:', error); });
+}
+
+// The Supabase session itself can stay signed in for weeks, so a fresh
+// login is a poor proxy for "still using the app" — this keeps
+// last_active_at fresh on real interaction (adding/editing a voucher,
+// copying a code, accepting a friend request, ...) instead. Called from the
+// global click/submit handlers below; throttled so a burst of clicks
+// doesn't spam the DB with writes.
+const ACTIVITY_TOUCH_INTERVAL_MS = 5 * 60 * 1000;
+function markActivity() {
+  if (!state.currentUser) return;
+  if (Date.now() - _lastActivityTouchAt < ACTIVITY_TOUCH_INTERVAL_MS) return;
+  touchLastActive(state.currentUser.id);
+}
 
 /* ============================================================
    VOUCHER FIELD MAPPING (Supabase ↔ frontend)
@@ -212,6 +251,7 @@ function mapListing(row) {
     expiryDate:    null,
     notes:         '',
     status:        row.status,
+    visibility:    row.visibility || 'public',
     createdAt:     row.created_at,
   };
 }
@@ -240,7 +280,7 @@ function mapReferral(row) {
     visibility:      row.visibility || 'public',
     expirationDate:  row.expiration_date || null,
     category:        row.category || resolvedBrand?.category || 'Other',
-    usedCount:       0, // no used_count column in referral_codes table
+    usedCount:       row.used_count || 0,
     createdAt:       row.created_at,
     brandData:       resolvedBrand,
   };
@@ -318,14 +358,14 @@ async function fetchListings() {
   if (sellerIds.length > 0) {
     const { data: profiles, error: pErr } = await supabase
       .from('public_profiles')
-      .select('id, name, email')
+      .select('id, first_name, last_name, email')
       .in('id', sellerIds);
     if (pErr) { console.error('fetchListings profiles error:', pErr); }
     else {
       const profileMap = Object.fromEntries((profiles || []).map(p => [p.id, p]));
       state.listings = state.listings.map(l => {
         const p = profileMap[l.sellerId];
-        return { ...l, sellerName: p?.name || p?.email || 'Seller', sellerEmail: p?.email || '' };
+        return { ...l, sellerName: fullName(p) || p?.email || 'Seller', sellerEmail: p?.email || '' };
       });
     }
   }
@@ -334,15 +374,18 @@ async function fetchListings() {
 async function fetchFriendIds() {
   if (!state.currentUser) return;
   const uid = state.currentUser.id;
-  const [sent, received] = await Promise.all([
+  const [sent, received, network] = await Promise.all([
     supabase.from('friendships').select('receiver_id').eq('requester_id', uid).eq('status', 'accepted'),
     supabase.from('friendships').select('requester_id').eq('receiver_id', uid).eq('status', 'accepted'),
+    supabase.rpc('trusted_network_ids', { p_user: uid }),
   ]);
   if (sent.error)     console.error('fetchFriendIds (sent) error:', sent.error);
   if (received.error) console.error('fetchFriendIds (received) error:', received.error);
+  if (network.error)  console.error('fetchFriendIds (network) error:', network.error);
   const sentIds     = (sent.data     || []).map(r => r.receiver_id);
   const receivedIds = (received.data || []).map(r => r.requester_id);
   state.friendIds = [...new Set([...sentIds, ...receivedIds])];
+  state.trustedNetworkIds = (network.data || []).map(r => r.user_id);
 }
 
 async function fetchFriends() {
@@ -350,14 +393,14 @@ async function fetchFriends() {
   if (state.friendIds.length === 0) { state.friends = []; return; }
   const { data, error } = await supabase
     .from('public_profiles')
-    .select('id, email, name')
+    .select('id, email, first_name, last_name')
     .in('id', state.friendIds);
   if (error) {
     console.error('fetchFriends profiles error:', error);
     state.friends = state.friendIds.map(id => ({ id, name: 'Friend', email: 'N/A' }));
     return;
   }
-  state.friends = (data || []).map(p => ({ id: p.id, name: p.name || p.email, email: p.email || 'N/A' }));
+  state.friends = (data || []).map(p => ({ id: p.id, name: fullName(p) || p.email, email: p.email || 'N/A' }));
 }
 
 async function fetchPendingRequests() {
@@ -373,12 +416,12 @@ async function fetchPendingRequests() {
   const requesterIds = requests.map(r => r.requester_id);
   const { data: profiles, error: pErr } = await supabase
     .from('public_profiles')
-    .select('id, email, name')
+    .select('id, email, first_name, last_name')
     .in('id', requesterIds);
   if (pErr) console.error('fetchPendingRequests profiles error:', pErr);
   state.pendingRequests = requests.map(r => {
     const p = (profiles || []).find(pr => pr.id === r.requester_id);
-    return { id: r.id, requesterId: r.requester_id, name: p?.name || p?.email || 'Unknown', email: p?.email || '' };
+    return { id: r.id, requesterId: r.requester_id, name: fullName(p) || p?.email || 'Unknown', email: p?.email || '' };
   });
 }
 
@@ -420,7 +463,7 @@ async function fetchReferrals() {
   if (ownerIds.length > 0) {
     const { data: profiles, error: pErr } = await supabase
       .from('public_profiles')
-      .select('id, name, email')
+      .select('id, first_name, last_name, email')
       .in('id', ownerIds);
     if (pErr) { console.error('fetchReferrals owner profiles error:', pErr); }
     else {
@@ -428,10 +471,17 @@ async function fetchReferrals() {
       state.referrals = state.referrals.map(r => {
         if (r.userId === uid) return r;
         const p = profileMap[r.userId];
-        return { ...r, ownerName: p?.name || p?.email || 'Community' };
+        return { ...r, ownerName: fullName(p) || p?.email || 'Community' };
       });
     }
   }
+
+  const { data: myUses, error: usesErr } = await supabase
+    .from('referral_code_uses')
+    .select('referral_id')
+    .eq('user_id', uid);
+  if (usesErr) console.error('fetchReferrals my-uses error:', usesErr);
+  state.myReferralUses = new Set((myUses || []).map(u => u.referral_id));
 }
 
 async function fetchReminders() {
@@ -596,18 +646,19 @@ async function login(email, password) {
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
   if (error) return error.message;
   state.currentUser = mapUser(data.user);
+  touchLastActive(data.user.id);
   await tryClaimPendingGift();
   go('home');
   return null;
 }
 
-async function register(name, email, password) {
+async function register(firstName, lastName, email, password) {
   if (password.length < 6) return 'Password must be at least 6 characters.';
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
     options: {
-      data: { name: name.trim() },
+      data: { first_name: toTitleCase(firstName), last_name: toTitleCase(lastName) },
       emailRedirectTo: `${window.location.origin}${import.meta.env.BASE_URL}`,
     },
   });
@@ -637,6 +688,7 @@ async function logout() {
   state.referrals  = [];
   state.friends         = [];
   state.friendIds       = [];
+  state.trustedNetworkIds = [];
   state.pendingRequests = [];
   state.reminders       = [];
   state.voucherFiles    = [];
@@ -1099,7 +1151,7 @@ async function markUnused(id) {
   go('voucher-detail', { id });
 }
 
-async function listForSale(id, price) {
+async function listForSale(id, price, visibility = 'public') {
   const v = state.vouchers.find(x => x.id === id);
   if (!v) return;
   const { error: vErr } = await supabase.from('vouchers').update({ status: 'listed' }).eq('id', id);
@@ -1111,7 +1163,7 @@ async function listForSale(id, price) {
     selling_price:  parseFloat(price),
     currency:       v.currency || 'EUR',
     status:         'available',
-    visibility:     'public',
+    visibility:     visibility === 'friends_only' ? 'friends_only' : 'public',
   });
   if (lErr) { console.error('listForSale listing insert error:', lErr); showToast('Error creating listing'); return; }
   showToast('Listed on marketplace');
@@ -1121,7 +1173,7 @@ async function listForSale(id, price) {
 async function unlist(id) {
   const { error: vErr } = await supabase.from('vouchers').update({ status: 'active' }).eq('id', id);
   if (vErr) { console.error('unlist voucher error:', vErr); showToast('Error removing listing'); return; }
-  const { error: lErr } = await supabase.from('marketplace_listings').update({ status: 'inactive' }).eq('voucher_id', id);
+  const { error: lErr } = await supabase.from('marketplace_listings').update({ status: 'cancelled' }).eq('voucher_id', id);
   if (lErr) { console.error('unlist marketplace error:', lErr); showToast('Error removing listing'); return; }
   showToast('Listing removed');
   go('voucher-detail', { id });
@@ -1290,12 +1342,24 @@ async function deleteReferral(id) {
   go('referrals');
 }
 
-async function incrementReferralUse(id) {
-  // TODO: referral_codes table has no used_count column — cannot persist usage count in DB
-  const r = state.referrals.find(x => x.id === id);
-  if (!r) return;
-  const newCount = (r.usedCount || 0) + 1;
-  state.referrals = state.referrals.map(x => x.id === id ? { ...x, usedCount: newCount } : x);
+// Marks (or unmarks) "I used this" for a referral code that isn't the
+// current user's own — owners are blocked from inflating their own code's
+// count at the RLS level too (referral_code_uses_insert policy), this is
+// just the matching client-side guard so the button doesn't even appear.
+async function toggleReferralUse(id) {
+  const uid = state.currentUser.id;
+  const alreadyUsed = state.myReferralUses.has(id);
+  if (alreadyUsed) {
+    const { error } = await supabase.from('referral_code_uses').delete().eq('referral_id', id).eq('user_id', uid);
+    if (error) { console.error('toggleReferralUse delete error:', error); showToast('Error updating use count'); return; }
+    state.myReferralUses.delete(id);
+    state.referrals = state.referrals.map(r => r.id === id ? { ...r, usedCount: Math.max((r.usedCount || 0) - 1, 0) } : r);
+  } else {
+    const { error } = await supabase.from('referral_code_uses').insert({ referral_id: id, user_id: uid });
+    if (error) { console.error('toggleReferralUse insert error:', error); showToast('Error updating use count'); return; }
+    state.myReferralUses.add(id);
+    state.referrals = state.referrals.map(r => r.id === id ? { ...r, usedCount: (r.usedCount || 0) + 1 } : r);
+  }
   render();
 }
 
@@ -1306,7 +1370,7 @@ async function fetchUserByEmail(email) {
   console.log('[fetchUserByEmail] searching for:', email);
   const { data, error } = await supabase
     .from('public_profiles')
-    .select('id, email, name, vouchers_sold')
+    .select('id, email, first_name, last_name, vouchers_sold')
     .eq('email', email)
     .single();
   if (error) {
@@ -1332,7 +1396,7 @@ async function addFriend(email) {
     console.error('addFriend error:', error);
     return 'Error sending request.';
   }
-  const displayName = found.name || found.email;
+  const displayName = fullName(found) || found.email;
   showToast(`Friend request sent to ${displayName}`);
   return null;
 }
@@ -1764,8 +1828,12 @@ function viewAuth() {
     <form id="form-signup" class="auth-form">
       <div id="auth-error" class="error-msg" style="display:none"></div>
       <div class="form-group">
-        <label for="signup-name">Full Name</label>
-        <input type="text" id="signup-name" name="name" placeholder="Your name" required>
+        <label for="signup-first-name">First Name</label>
+        <input type="text" id="signup-first-name" name="firstName" placeholder="Your first name" required autocomplete="given-name">
+      </div>
+      <div class="form-group">
+        <label for="signup-last-name">Last Name</label>
+        <input type="text" id="signup-last-name" name="lastName" placeholder="Your last name" required autocomplete="family-name">
       </div>
       <div class="form-group">
         <label for="signup-email">Email</label>
@@ -2448,6 +2516,14 @@ function viewVoucherDetail() {
           <input type="text" name="price" placeholder="e.g. 40,00" required>
           <span class="form-hint">Original value: ${formatCurrency(v.value, v.currency)}</span>
         </div>
+        <div class="form-group">
+          <label>Who can see this listing?</label>
+          <select name="visibility">
+            <option value="public">Public (visible to everyone browsing the marketplace)</option>
+            <option value="friends_only">Trusted Community only (friends &amp; friends of friends)</option>
+          </select>
+          <span class="form-hint">Trusted Community listings never appear in public Browse</span>
+        </div>
         <div style="display:flex;gap:10px">
           <button type="button" class="btn btn-ghost" data-action="hide-sell">Cancel</button>
           <button type="submit" class="btn btn-primary btn-full">List for Sale</button>
@@ -2474,7 +2550,7 @@ function listingCard(l, isOwn = false) {
   <div class="listing-card" data-nav="listing-detail" data-id="${esc(l.id)}">
     ${avatar(l.brand, 46)}
     <div class="lc-info">
-      <div class="lc-brand">${esc(l.brand)}</div>
+      <div class="lc-brand">${esc(l.brand)} ${l.visibility === 'friends_only' ? '<span class="badge badge-primary" style="font-size:0.6rem;padding:2px 5px">Trusted Community</span>' : ''}</div>
       <div class="lc-seller">${isOwn ? 'Your listing' : esc(l.sellerName)}</div>
       ${days !== null && days >= 0 && days <= 14 ? `<div class="text-xs text-warning" style="margin-top:2px">Expires in ${days}d</div>` : ''}
       ${days !== null && days < 0 ? `<div class="text-xs text-danger" style="margin-top:2px">Expired</div>` : ''}
@@ -2491,12 +2567,25 @@ function viewMarketplace() {
   const tab = state.marketplaceTab || 'browse';
   const q   = state.searchQuery.toLowerCase();
   const uid = state.currentUser.id;
-  const friendIds = state.friendIds;
+  const friendIds        = state.friendIds;
+  const trustedNetworkIds = state.trustedNetworkIds;
 
-  let listings = state.listings.filter(l => l.sellerId !== uid);
-  if (q) listings = listings.filter(l => l.brand.toLowerCase().includes(q));
+  // Browse: public listings only, open to everyone. Friends' public
+  // listings are boosted to the top but strangers' are included too.
+  let browseListings = state.listings.filter(l => l.sellerId !== uid && l.visibility === 'public');
+  if (q) browseListings = browseListings.filter(l => l.brand.toLowerCase().includes(q));
+  browseListings.sort((a, b) => {
+    const aF = friendIds.includes(a.sellerId) ? 0 : 1;
+    const bF = friendIds.includes(b.sellerId) ? 0 : 1;
+    return aF - bF;
+  });
 
-  listings.sort((a, b) => {
+  // Trusted Community: everything from your network (friends + friends of
+  // friends), public or trusted-only — a network member's public listing
+  // still belongs here too, direct friends surfaced first.
+  let communityListings = state.listings.filter(l => l.sellerId !== uid && trustedNetworkIds.includes(l.sellerId));
+  if (q) communityListings = communityListings.filter(l => l.brand.toLowerCase().includes(q));
+  communityListings.sort((a, b) => {
     const aF = friendIds.includes(a.sellerId) ? 0 : 1;
     const bF = friendIds.includes(b.sellerId) ? 0 : 1;
     return aF - bF;
@@ -2509,6 +2598,7 @@ function viewMarketplace() {
   <main class="content">
     <div class="inline-tabs">
       <button class="inline-tab ${tab==='browse'?'active':''}" data-marketplace-tab="browse">Browse</button>
+      <button class="inline-tab ${tab==='community'?'active':''}" data-marketplace-tab="community">Trusted Community (${communityListings.length})</button>
       <button class="inline-tab ${tab==='mine'?'active':''}" data-marketplace-tab="mine">My Listings (${myListings.length})</button>
     </div>
 
@@ -2517,9 +2607,23 @@ function viewMarketplace() {
       <span class="search-icon">${icon.search}</span>
       <input type="search" placeholder="Search brand…" value="${esc(state.searchQuery)}" data-search="marketplace">
     </div>
-    ${listings.length > 0
-      ? listings.map(l => listingCard(l)).join('')
+    ${browseListings.length > 0
+      ? browseListings.map(l => listingCard(l)).join('')
       : `<div class="empty-state"><div class="empty-icon">${navIcons.marketplace}</div><h3>${q?'No results':'Marketplace is empty'}</h3><p>${q?'Try a different search term':'Be the first to list a voucher for sale'}</p></div>`
+    }
+    ` : tab === 'community' ? `
+    <div class="search-bar" style="margin-bottom:16px">
+      <span class="search-icon">${icon.search}</span>
+      <input type="search" placeholder="Search brand…" value="${esc(state.searchQuery)}" data-search="marketplace">
+    </div>
+    ${communityListings.length > 0
+      ? communityListings.map(l => listingCard(l)).join('')
+      : `<div class="empty-state">
+           <div class="empty-icon">${icon.tag}</div>
+           <h3>${q ? 'No results' : 'No listings from your network yet'}</h3>
+           <p>${q ? 'Try a different search term' : 'Listings from your friends and friends of friends show up here'}</p>
+           ${!q ? '<button class="btn btn-primary" data-nav="friends">Manage Friends</button>' : ''}
+         </div>`
     }
     ` : `
     ${myListings.length > 0
@@ -2599,6 +2703,7 @@ function viewListingDetail() {
    ============================================================ */
 function referralCard(r, isOwn = false) {
   const vote = state.referralVotes[r.id] || null;
+  const usedByMe = state.myReferralUses.has(r.id);
   return `
   <div class="referral-card">
     <div class="rc-header">
@@ -2627,18 +2732,17 @@ function referralCard(r, isOwn = false) {
         ${r.benefitNew      ? `<span class="rc-benefit">New user: ${esc(r.benefitNew)}</span>` : ''}
         ${r.benefitReferrer ? `<span class="rc-benefit">Referrer: ${esc(r.benefitReferrer)}</span>` : ''}
       </div>
-      ${isOwn ? `
       <div class="usage-count">
         ${icon.users} <span>${r.usedCount || 0} use${(r.usedCount||0)!==1?'s':''}</span>
-        <button class="btn btn-sm" style="padding:4px 8px;background:var(--success-light);color:var(--success);border-radius:6px" data-action="increment-referral" data-id="${esc(r.id)}" title="Mark one more use">+1 Use</button>
       </div>
-      ` : `
-      <div style="display:flex;gap:6px;align-items:center">
-        <button class="btn btn-sm ${vote==='up'?'btn-success':'btn-ghost'}" style="padding:3px 10px;font-size:0.8rem" data-action="vote-referral" data-id="${esc(r.id)}" data-vote="up" title="Works for me">👍 Works</button>
-        <button class="btn btn-sm ${vote==='down'?'btn-danger':'btn-ghost'}" style="padding:3px 10px;font-size:0.8rem" data-action="vote-referral" data-id="${esc(r.id)}" data-vote="down" title="Doesn't work">👎 Expired</button>
-      </div>
-      `}
     </div>
+    ${!isOwn ? `
+    <div style="display:flex;gap:6px;align-items:center;margin-top:8px;flex-wrap:wrap">
+      <button class="btn btn-sm ${usedByMe?'btn-success':''}" style="padding:4px 10px;${usedByMe?'background:var(--success-light);color:var(--success)':'background:var(--gray-light)'};border-radius:6px" data-action="increment-referral" data-id="${esc(r.id)}" title="${usedByMe ? 'Remove your use mark' : 'Mark that you used this code'}">${usedByMe ? '✓ Used' : '+1 Use'}</button>
+      <button class="btn btn-sm ${vote==='up'?'btn-success':'btn-ghost'}" style="padding:3px 10px;font-size:0.8rem" data-action="vote-referral" data-id="${esc(r.id)}" data-vote="up" title="Works for me">👍 Works</button>
+      <button class="btn btn-sm ${vote==='down'?'btn-danger':'btn-ghost'}" style="padding:3px 10px;font-size:0.8rem" data-action="vote-referral" data-id="${esc(r.id)}" data-vote="down" title="Doesn't work">👎 Expired</button>
+    </div>
+    ` : ''}
     <div class="rc-terms"><strong>Terms &amp; Conditions:</strong> ${r.terms ? esc(r.terms) : 'No terms specified'}</div>
   </div>`;
 }
@@ -2683,6 +2787,7 @@ function viewReferrals() {
   if (brand) {
     let visible = pool.filter(r => r.brand === brand);
     if (q) visible = visible.filter(r => r.code.toLowerCase().includes(q) || r.brand.toLowerCase().includes(q));
+    visible = [...visible].sort((a, b) => (b.usedCount || 0) - (a.usedCount || 0));
     const brandDesc = getBrandDescription(brand);
 
     return `
@@ -3323,6 +3428,7 @@ function handleFocusOut(e) {
 }
 
 function handleClick(e) {
+  markActivity();
   const brandOpt = e.target.closest('[data-brand-opt]');
   if (brandOpt) {
     const input = document.querySelector('[data-brand-ac]');
@@ -3577,7 +3683,7 @@ async function handleAction(el, e) {
       break;
 
     case 'increment-referral':
-      incrementReferralUse(id);
+      toggleReferralUse(id);
       break;
 
     case 'vote-referral': {
@@ -3692,6 +3798,7 @@ function handleChange(e) {
 
 async function handleSubmit(e) {
   e.preventDefault();
+  markActivity();
   const form = e.target;
 
   if (form.id === 'form-login') {
@@ -3711,7 +3818,7 @@ async function handleSubmit(e) {
     const d = formData(form);
     const btn = form.querySelector('[type=submit]');
     if (btn) { btn.disabled = true; btn.textContent = 'Creating account…'; }
-    const err = await register(d.name, d.email, d.password);
+    const err = await register(d.firstName, d.lastName, d.email, d.password);
     if (err) {
       const el = form.querySelector('#auth-error');
       if (el) { el.textContent = err; el.style.display = ''; }
@@ -3854,7 +3961,7 @@ async function handleSubmit(e) {
     const d = formData(form);
     const price = parseFloat(normalizeAmount(d.price));
     if (!price || price <= 0) return;
-    listForSale(d.voucherId, price);
+    listForSale(d.voucherId, price, d.visibility);
     return;
   }
 
@@ -4036,6 +4143,7 @@ async function init() {
     state.view = 'reset-password';
   } else if (session) {
     state.currentUser = mapUser(session.user);
+    touchLastActive(session.user.id);
     state.view = 'home';
     await tryClaimPendingGift();
     // vouchers first so mapReminder can look up brand names
@@ -4069,6 +4177,7 @@ async function init() {
     }
     if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session && !state.currentUser && state.view !== 'reset-password') {
       state.currentUser = mapUser(session.user);
+      touchLastActive(session.user.id);
       state.view = 'home';
       await tryClaimPendingGift();
       await fetchVouchers();

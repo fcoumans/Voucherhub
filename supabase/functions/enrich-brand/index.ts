@@ -81,7 +81,7 @@ Deno.serve(async (req) => {
 
   const { data: brand, error: fetchErr } = await supabase
     .from('brands')
-    .select('id, name, domain, description')
+    .select('id, name, domain, description, category')
     .eq('id', brandId)
     .maybeSingle();
 
@@ -97,11 +97,19 @@ Deno.serve(async (req) => {
 
   const siteSnippet = brand.domain ? await fetchDomainSnippet(brand.domain) : null;
 
+  // The category is a hint the user already assigned (e.g. "Food & Drink")
+  // — when there's no real site content to go on, this keeps the AI from
+  // free-guessing a plausible-sounding but wrong category from the name
+  // alone (e.g. assuming "ICE ICE AMY" is a fashion brand).
+  const categoryHint = brand.category
+    ? ` This business is filed under the "${brand.category}" category in our app, so keep the description consistent with that unless the page content clearly says otherwise.`
+    : '';
+
   const prompt = siteSnippet
-    ? `Here is the title and meta description from the homepage of "${brand.name}" (${brand.domain}):\n\n"""${siteSnippet}"""\n\nBased ONLY on this page content, write a short, factual, neutral 1-3 sentence introduction to this brand/store for shoppers browsing a second-hand gift-card marketplace app. Plain prose, no markdown, no quotation marks, no preamble. Describe what this specific website actually offers — do not substitute knowledge of a different, more famous brand that happens to share this name.`
+    ? `Here is the title and meta description from the homepage of "${brand.name}" (${brand.domain}):\n\n"""${siteSnippet}"""\n\nBased on this page content, write a short, factual, neutral 1-3 sentence introduction to this brand/store for shoppers browsing a second-hand gift-card marketplace app. Plain prose, no markdown, no quotation marks, no preamble. Describe what this specific website actually offers — do not substitute knowledge of a different, more famous brand that happens to share this name.${categoryHint} If this snippet is too thin to say anything specific (e.g. just a bare site title), do not explain that or refuse — instead write one short, generic sentence identifying "${brand.name}" neutrally as a brand/store, without inventing specific facts.`
     : `Give a short, factual, neutral introduction to the brand/company "${brand.name}"${
         brand.domain ? ` (website: ${brand.domain})` : ''
-      } for shoppers browsing a second-hand gift-card marketplace app. 1-3 short sentences of plain prose, no markdown, no quotation marks, no preamble. If you don't recognize this brand with confidence, write one generic sentence describing it neutrally as a brand/store without inventing specific facts.`;
+      } for shoppers browsing a second-hand gift-card marketplace app. 1-3 short sentences of plain prose, no markdown, no quotation marks, no preamble.${categoryHint} If you don't recognize this brand with confidence, write one generic sentence describing it neutrally as a brand/store without inventing specific facts.`;
 
   const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',

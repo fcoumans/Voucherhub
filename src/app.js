@@ -656,7 +656,7 @@ async function login(email, password) {
 }
 
 async function register(firstName, lastName, email, password) {
-  if (password.length < 6) return 'Password must be at least 6 characters.';
+  if (password.length < 8) return 'Password must be at least 8 characters.';
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
@@ -685,17 +685,16 @@ async function register(firstName, lastName, email, password) {
 
 async function logout() {
   await supabase.auth.signOut();
-  state.currentUser = null;
-  state.vouchers   = [];
-  state.listings   = [];
-  state.referrals  = [];
-  state.friends         = [];
-  state.friendIds       = [];
-  state.trustedNetworkIds = [];
-  state.pendingRequests = [];
-  state.reminders       = [];
-  state.voucherFiles    = [];
-  go('auth');
+  // Full reload rather than resetting individual state fields — this is a
+  // long-lived in-memory `state` object with many fields (caches, lists,
+  // maps), and a partial reset here has already drifted out of sync with
+  // it once (new fields keep getting added elsewhere without updating this
+  // list). A stale reset risks a second account, signing in on the same
+  // tab/device, briefly rendering with the previous user's leftover data.
+  // A reload guarantees a clean slate every time. Note: location.reload(),
+  // not location.href = BASE_URL — assigning href to the URL the page is
+  // already at is a no-op in browsers and won't actually navigate.
+  window.location.reload();
 }
 
 /* ============================================================
@@ -1370,17 +1369,12 @@ async function toggleReferralUse(id) {
    FRIEND ACTIONS
    ============================================================ */
 async function fetchUserByEmail(email) {
-  console.log('[fetchUserByEmail] searching for:', email);
   const { data, error } = await supabase
     .from('public_profiles')
     .select('id, email, first_name, last_name, vouchers_sold')
     .eq('email', email)
     .single();
-  if (error) {
-    console.error('[fetchUserByEmail] Supabase error:', error);
-    return null;
-  }
-  console.log('[fetchUserByEmail] returned profile:', data);
+  if (error) return null;
   return data;
 }
 
@@ -1842,7 +1836,7 @@ function viewAuth() {
         <label for="signup-email">Email</label>
         <input type="email" id="signup-email" name="email" placeholder="you@example.com" required autocomplete="email">
       </div>
-      ${pwField('signup-password', 'password', 'Password', 'Min. 6 characters', 'new-password')}
+      ${pwField('signup-password', 'password', 'Password', 'Min. 8 characters', 'new-password')}
       <button type="submit" class="btn btn-primary btn-full">Create Account</button>
     </form>
     `}
@@ -3241,7 +3235,7 @@ function viewResetPassword() {
     </div>
     <form id="form-reset-password" class="auth-form">
       <div id="reset-error" class="error-msg" style="display:none"></div>
-      ${pwField('reset-password', 'password', 'New Password', 'Min. 6 characters', 'new-password')}
+      ${pwField('reset-password', 'password', 'New Password', 'Min. 8 characters', 'new-password')}
       ${pwField('reset-password-confirm', 'passwordConfirm', 'Confirm Password', 'Re-enter password', 'new-password')}
       <button type="submit" class="btn btn-primary btn-full">Update Password</button>
     </form>
@@ -3856,7 +3850,7 @@ async function handleSubmit(e) {
     const d = formData(form);
     const btn = form.querySelector('[type=submit]');
     const errEl = document.getElementById('reset-error');
-    if (d.password.length < 6) { if (errEl) { errEl.textContent = 'Password must be at least 6 characters.'; errEl.style.display = ''; } return; }
+    if (d.password.length < 8) { if (errEl) { errEl.textContent = 'Password must be at least 8 characters.'; errEl.style.display = ''; } return; }
     if (d.password !== d.passwordConfirm) { if (errEl) { errEl.textContent = 'Passwords do not match.'; errEl.style.display = ''; } return; }
     if (errEl) errEl.style.display = 'none';
     if (btn) { btn.disabled = true; btn.textContent = 'Updating…'; }

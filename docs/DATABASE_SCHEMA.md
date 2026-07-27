@@ -280,9 +280,11 @@ Source of truth for brand logos, categories, and autocomplete suggestions across
 |---|---|---|
 | `handle_new_user()` | Trigger (`on_auth_user_created` on `auth.users`) | Creates the matching `public.users` row on signup, title-casing first/last name from signup metadata |
 | `sync_referral_used_count()` | Trigger (`referral_code_uses_sync` on `referral_code_uses`) | Keeps `referral_codes.used_count` in sync on insert/delete |
-| `trusted_network_ids(p_user uuid)` | RPC, `SECURITY DEFINER` | Returns a user's 1st- and 2nd-degree friend network (friends + friends of friends). Bypasses `friendships` RLS internally (which only lets a user read rows they're a party to — that blocks a plain 2-hop join) and is guarded to only ever compute the caller's own network. Used both by `marketplace_listings`' RLS policy and directly by the client for the Trusted Community tab |
-| `claim_voucher_gift(p_gift_id uuid)` | RPC, `SECURITY DEFINER` | Atomically transfers a gifted voucher (and its files) to the claiming user, marks the gift claimed, and auto-creates a friendship between sender and claimer if none exists |
+| `trusted_network_ids(p_user uuid)` | RPC, `SECURITY DEFINER`, `EXECUTE` granted to `authenticated` only | Returns a user's 1st- and 2nd-degree friend network (friends + friends of friends). Bypasses `friendships` RLS internally (which only lets a user read rows they're a party to — that blocks a plain 2-hop join) and is guarded to only ever compute the caller's own network. Used both by `marketplace_listings`' RLS policy and directly by the client for the Trusted Community tab |
+| `claim_voucher_gift(p_gift_id uuid)` | RPC, `SECURITY DEFINER`, `EXECUTE` granted to `authenticated` only | Atomically transfers a gifted voucher (and its files) to the claiming user, marks the gift claimed, and auto-creates a friendship between sender and claimer if none exists |
 | `rls_auto_enable()` | Event trigger (`ensure_rls`, project-level) | Supabase-platform safety net that auto-enables RLS on any newly created `public` table. Not app-specific — don't remove it thinking it's dead |
+
+All five `SECURITY DEFINER` functions in this table had `EXECUTE` granted to `PUBLIC` (Postgres's default on function creation, which includes the unauthenticated `anon` role) until an auth security review revoked it — see Cleanup History below. `claim_voucher_gift` and `trusted_network_ids` now grant `EXECUTE` to `authenticated` only; the three trigger/event-trigger functions grant it to nobody (Postgres refuses direct calls to trigger functions regardless of grants, so they only ever run via their triggers).
 
 ## Scheduled jobs (pg_cron)
 
@@ -407,3 +409,46 @@ actual app-code usage (not just column names) and live data patterns. Changes ma
 zero references, and either zero or near-zero populated rows — but left in place
 pending a deliberate decision to drop them): `vouchers.remaining_amount`,
 `vouchers.image_url`, `vouchers.photo_url`, `users.avatar_url`.
+
+**2026-07-27, authentication security review:**
+
+- **Fixed:** all 5 `SECURITY DEFINER` functions had `EXECUTE` granted to `PUBLIC`
+  (Postgres's default on function creation), including the fully unauthenticated `anon`
+  role — meaning any of them could be invoked directly via `/rest/v1/rpc/...` using only
+  the public anon key, without ever logging in. `claim_voucher_gift` was the concerning
+  one: it has real side effects (row locks, reassigns voucher ownership), and only
+  avoided actual data corruption under an anon call because `vouchers.user_id` happens
+  to be `NOT NULL` (making the UPDATE fail rather than succeed) — accidental protection,
+  not real security. Revoked `PUBLIC` execute on all 5, re-granted to `authenticated`
+  only where legitimately needed (`claim_voucher_gift`, `trusted_network_ids`); the 3
+  trigger/event-trigger functions get no direct-call grant at all.
+- **Fixed (app code, `src/app.js`):** client-side minimum password length raised from 6
+  to 8 characters (signup and reset-password forms); `logout()` now does a full
+  `window.location.reload()` instead of resetting individual `state` fields (the partial
+  reset had already drifted out of sync with the app once, and a stale reset risks a
+  second account briefly rendering with the previous user's leftover data on a shared
+  device); removed PII (searched email + returned profile) from `console.log`/`error` in
+  `fetchUserByEmail()`.
+- **Fixed (`src/lib/supabase.js`):** switched `flowType` from the default `implicit` to
+  `pkce` — email links (signup confirmation, password reset) now carry a short-lived
+  exchange code instead of the access token itself, so the token never sits in the URL.
+  Verified via the installed supabase-js source that `_initialize()` auto-detects a
+  `?code=` param and exchanges it before `getSession()` resolves — no other code changes
+  needed, and the existing `PASSWORD_RECOVERY` event listener remains as a fallback.
+- **Confirmed already safe, no change needed:** no server-side secret (service-role key,
+  Anthropic key, VAPID private key) is ever exposed to the client or echoed in any edge
+  function response body; no password/token value is ever written to `state`,
+  `localStorage`, or `console`; no OAuth/social sign-in is implemented; the
+  `resetPasswordForEmail`/`emailRedirectTo` URLs are built from `window.location.origin`
+  (not user-controllable), so there's no open-redirect vector in app code.
+- **Not fixed here — requires the Supabase Dashboard, no MCP tool access to Auth config:**
+  leaked-password-protection is confirmed disabled (flagged by the security advisor);
+  server-side minimum password length and complexity rules should be raised to match or
+  exceed the client-side minimum (client checks alone don't stop a direct API call);
+  Auth rate limits should be reviewed; CAPTCHA (hCaptcha/Turnstile) on signup/login would
+  meaningfully harden brute-force/bot resistance but requires a third-party account and
+  real implementation, not a toggle; confirm the Auth "Redirect URLs" allow-list only
+  includes intended domains.
+- **Flagged, not changed (product judgment call):** signup reveals "this email is
+  already registered" for a duplicate email — real UX value, but a textbook
+  user-enumeration signal. Left as-is pending a product decision.

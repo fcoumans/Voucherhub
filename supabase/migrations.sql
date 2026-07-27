@@ -138,6 +138,14 @@ CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
+-- Trigger functions (RETURNS trigger) can't be invoked directly via a
+-- normal function call regardless of grants — Postgres refuses with
+-- "trigger functions can only be called as triggers" — so this REVOKE is
+-- pure hygiene (removing the default PUBLIC grant every function gets at
+-- creation), not a functional fix. Kept explicit anyway so a security
+-- scan doesn't keep re-flagging it.
+REVOKE EXECUTE ON FUNCTION public.handle_new_user() FROM PUBLIC;
+
 -- (public_profiles view is created further below, after
 -- public.marketplace_listings exists — it left-joins that table.)
 
@@ -460,6 +468,10 @@ CREATE TRIGGER referral_code_uses_sync
   AFTER INSERT OR DELETE ON public.referral_code_uses
   FOR EACH ROW EXECUTE FUNCTION public.sync_referral_used_count();
 
+-- Hygiene only, see the matching comment on handle_new_user above —
+-- trigger functions can't be called directly regardless of grants.
+REVOKE EXECUTE ON FUNCTION public.sync_referral_used_count() FROM PUBLIC;
+
 -- ============================================================
 -- public.friendships
 -- ============================================================
@@ -554,6 +566,15 @@ AS $$
   SELECT p_user
 $$;
 
+-- Postgres grants EXECUTE to PUBLIC (which includes the fully
+-- unauthenticated `anon` role) by default on every function it creates —
+-- the GRANT ... TO authenticated below is additive, not a replacement, so
+-- without this REVOKE an anonymous caller could still invoke this
+-- directly via /rest/v1/rpc/trusted_network_ids using only the public
+-- anon key. Safe here regardless (self-guarded: WHERE p_user = auth.uid()
+-- returns nothing for a NULL/anon auth.uid()), but revoked anyway as
+-- defense-in-depth and to not rely on that guard alone.
+REVOKE EXECUTE ON FUNCTION public.trusted_network_ids(UUID) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.trusted_network_ids(UUID) TO authenticated;
 
 -- Public-visibility SELECT policy, named "Anyone can view public available
@@ -789,6 +810,18 @@ BEGIN
 END;
 $$;
 
+-- Security fix: Postgres grants EXECUTE to PUBLIC (including the
+-- unauthenticated `anon` role) by default on function creation — without
+-- this REVOKE, an anonymous caller with only the public anon key could
+-- invoke this directly via /rest/v1/rpc/claim_voucher_gift, never having
+-- logged in. Unlike trusted_network_ids, this one has real side effects
+-- (row locks, attempts to reassign voucher ownership via
+-- `auth.uid()` — which is NULL for an anon caller) — it was only saved
+-- from actually corrupting data by vouchers.user_id being NOT NULL,
+-- which made the UPDATE fail rather than succeed. That's accidental
+-- protection, not real security, and would not survive a future schema
+-- change. Discovered and fixed as part of an auth security review.
+REVOKE EXECUTE ON FUNCTION public.claim_voucher_gift(UUID) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.claim_voucher_gift(UUID) TO authenticated;
 
 -- ============================================================
@@ -961,5 +994,9 @@ CREATE INDEX IF NOT EXISTS push_notification_log_voucher_id_idx ON public.push_n
 -- this file, isn't authored by this project, and every ALTER TABLE ...
 -- ENABLE ROW LEVEL SECURITY statement above is redundant with it — kept
 -- explicit anyway so this script doesn't silently depend on project-level
--- config that isn't tracked in version control.
+-- config that isn't tracked in version control. Like the other trigger
+-- functions above, it can't be invoked directly regardless of grants —
+-- REVOKE here is hygiene only, done directly on the live project as part
+-- of an auth security review (not re-declared here since this function
+-- isn't authored by this file to begin with).
 -- ============================================================

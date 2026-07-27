@@ -147,8 +147,17 @@ const formData = (form) => Object.fromEntries(new FormData(form));
    USER MAPPING
    ============================================================ */
 function mapUser(supabaseUser) {
-  const firstName = supabaseUser.user_metadata?.first_name || '';
-  const lastName  = supabaseUser.user_metadata?.last_name || '';
+  const meta = supabaseUser.user_metadata || {};
+  let firstName = meta.first_name || '';
+  let lastName  = meta.last_name || '';
+  if (!firstName && meta.name) {
+    // Accounts created before the first_name/last_name split only have a
+    // single "name" in auth metadata — split it so the greeting still
+    // shows a first name instead of falling through to the email prefix.
+    const parts = String(meta.name).trim().split(/\s+/);
+    firstName = parts[0] || '';
+    lastName  = parts.slice(1).join(' ');
+  }
   return {
     id:        supabaseUser.id,
     firstName, lastName,

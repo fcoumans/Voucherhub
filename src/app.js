@@ -2612,6 +2612,7 @@ function viewMarketplace() {
       : `<div class="empty-state"><div class="empty-icon">${navIcons.marketplace}</div><h3>${q?'No results':'Marketplace is empty'}</h3><p>${q?'Try a different search term':'Be the first to list a voucher for sale'}</p></div>`
     }
     ` : tab === 'community' ? `
+    <div class="sell-hint">${icon.info} Trusted Community shows listings from your friends and friends of friends — including ones sellers chose to keep out of the public Browse tab.</div>
     <div class="search-bar" style="margin-bottom:16px">
       <span class="search-icon">${icon.search}</span>
       <input type="search" placeholder="Search brand…" value="${esc(state.searchQuery)}" data-search="marketplace">

@@ -1,5 +1,11 @@
 # MVP Scope
 
+> **Status: historical.** This describes the original MVP cut, kept for
+> context. Several items listed under "Excluded" below have since shipped
+> (AI extraction, OCR voucher scanning, the friend system, friends-only
+> visibility) — see `docs/DATABASE_SCHEMA.md` and the code for current
+> scope. Don't treat this page as a gate on what's allowed to exist.
+
 ## Goal
 
 Validate that users want a central place to manage vouchers and referral codes.

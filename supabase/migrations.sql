@@ -5,6 +5,15 @@
 -- ============================================================
 -- public.brands  (source of truth for logos / autocomplete)
 -- ============================================================
+-- Originally created via the dashboard, not this script — the CREATE
+-- TABLE below only matters if bootstrapping a fresh project; on the live
+-- project it's a no-op and the ALTERs that follow are what actually apply.
+CREATE TABLE IF NOT EXISTS public.brands (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name       TEXT NOT NULL UNIQUE,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
 ALTER TABLE public.brands ADD COLUMN IF NOT EXISTS created_by UUID REFERENCES auth.users(id);
 ALTER TABLE public.brands ADD COLUMN IF NOT EXISTS category   TEXT;
 ALTER TABLE public.brands ADD COLUMN IF NOT EXISTS domain     TEXT;
@@ -135,6 +144,32 @@ CREATE TRIGGER on_auth_user_created
 -- ============================================================
 -- public.vouchers
 -- ============================================================
+-- Originally created via the dashboard, not this script — same note as
+-- brands above: this CREATE TABLE only matters for a fresh bootstrap.
+CREATE TABLE IF NOT EXISTS public.vouchers (
+  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id           UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  brand             TEXT NOT NULL,
+  category          TEXT,
+  amount            NUMERIC(10,2),
+  remaining_amount  NUMERIC(10,2),
+  currency          TEXT DEFAULT 'EUR',
+  voucher_code      TEXT,
+  pin               TEXT,
+  expiration_date   DATE,
+  image_url         TEXT,
+  notes             TEXT,
+  status            TEXT DEFAULT 'active'
+                      CHECK (status IN ('active', 'used', 'expired', 'listed', 'sold')),
+  voucher_type      TEXT NOT NULL DEFAULT 'gift_card'
+                      CHECK (voucher_type IN ('gift_card', 'store_credit')),
+  copy_count        INTEGER NOT NULL DEFAULT 0,
+  balance           NUMERIC,
+  photo_url         TEXT,
+  created_at        TIMESTAMPTZ DEFAULT now(),
+  updated_at        TIMESTAMPTZ DEFAULT now()
+);
+
 ALTER TABLE public.vouchers ADD COLUMN IF NOT EXISTS barcode_path TEXT;
 
 -- Not every voucher has a monetary face value (e.g. "weekend getaway for
@@ -151,8 +186,39 @@ ALTER TABLE public.vouchers ADD CONSTRAINT vouchers_value_present_check
 ALTER TABLE public.vouchers ADD COLUMN IF NOT EXISTS gift_message TEXT;
 ALTER TABLE public.vouchers ADD COLUMN IF NOT EXISTS gift_sender  TEXT;
 
+-- Normalizes brand the same way referral_codes.brand_id already does —
+-- vouchers.brand stays freeform autocomplete text (users can type
+-- anything); brand_id is best-effort enrichment resolved via
+-- getBrandByName() after ensureBrand() in src/app.js, not an enforced
+-- relationship the UI depends on. Nullable + SET NULL to match.
+ALTER TABLE public.vouchers ADD COLUMN IF NOT EXISTS brand_id UUID REFERENCES public.brands(id) ON DELETE SET NULL;
+UPDATE public.vouchers v SET brand_id = b.id
+  FROM public.brands b
+  WHERE v.brand_id IS NULL AND lower(v.brand) = lower(b.name);
+
+-- Guards against negative amounts — no bad data existed when these were
+-- added, but nothing was stopping it either.
+ALTER TABLE public.vouchers DROP CONSTRAINT IF EXISTS vouchers_amount_nonneg;
+ALTER TABLE public.vouchers ADD CONSTRAINT vouchers_amount_nonneg CHECK (amount IS NULL OR amount >= 0);
+ALTER TABLE public.vouchers DROP CONSTRAINT IF EXISTS vouchers_balance_nonneg;
+ALTER TABLE public.vouchers ADD CONSTRAINT vouchers_balance_nonneg CHECK (balance IS NULL OR balance >= 0);
+
 ALTER TABLE public.vouchers ENABLE ROW LEVEL SECURITY;
 
+-- Same drift pattern already caught for brands above: the live project has
+-- these under dashboard-assigned names ("Users can view own vouchers" etc),
+-- so this script's own vouchers_select/insert/update/delete names never
+-- matched anything and kept silently no-op'ing. Also: live has a SEPARATE
+-- policy, "vouchers_select_listed", allowing ANY authenticated user to see
+-- a voucher with status = 'listed' — undocumented here until now, but
+-- required for the marketplace: fetchListings() joins
+-- marketplace_listings -> vouchers(brand, expiration_date), and without
+-- this a buyer couldn't see the brand/expiry of someone else's listing.
+DROP POLICY IF EXISTS "Users can view own vouchers" ON public.vouchers;
+DROP POLICY IF EXISTS "Users can create own vouchers" ON public.vouchers;
+DROP POLICY IF EXISTS "Users can update own vouchers" ON public.vouchers;
+DROP POLICY IF EXISTS "Users can delete own vouchers" ON public.vouchers;
+DROP POLICY IF EXISTS "vouchers_select_listed" ON public.vouchers;
 DROP POLICY IF EXISTS "vouchers_select" ON public.vouchers;
 DROP POLICY IF EXISTS "vouchers_insert" ON public.vouchers;
 DROP POLICY IF EXISTS "vouchers_update" ON public.vouchers;
@@ -160,6 +226,9 @@ DROP POLICY IF EXISTS "vouchers_delete" ON public.vouchers;
 
 CREATE POLICY "vouchers_select" ON public.vouchers
   FOR SELECT TO authenticated USING (user_id = auth.uid());
+
+CREATE POLICY "vouchers_select_listed" ON public.vouchers
+  FOR SELECT TO authenticated USING (status = 'listed');
 
 CREATE POLICY "vouchers_insert" ON public.vouchers
   FOR INSERT TO authenticated WITH CHECK (user_id = auth.uid());
@@ -182,23 +251,36 @@ CREATE TABLE IF NOT EXISTS public.marketplace_listings (
   selling_price       NUMERIC(10,2) NOT NULL,
   discount_percentage NUMERIC(5,2),
   currency            TEXT        NOT NULL DEFAULT 'EUR',
-  status              TEXT        NOT NULL DEFAULT 'active'
-                        CHECK (status IN ('active', 'inactive', 'sold')),
+  status              TEXT        NOT NULL DEFAULT 'available'
+                        CHECK (status IN ('available', 'reserved', 'sold', 'cancelled')),
   visibility          TEXT        NOT NULL DEFAULT 'public'
-                        CHECK (visibility IN ('public', 'friends', 'private')),
+                        CHECK (visibility IN ('public', 'friends_only')),
   created_at          TIMESTAMPTZ DEFAULT now(),
   updated_at          TIMESTAMPTZ DEFAULT now()
 );
 
 -- Add missing columns to existing table safely
 ALTER TABLE public.marketplace_listings ADD COLUMN IF NOT EXISTS discount_percentage NUMERIC(5,2);
-ALTER TABLE public.marketplace_listings ADD COLUMN IF NOT EXISTS status     TEXT NOT NULL DEFAULT 'active';
+ALTER TABLE public.marketplace_listings ADD COLUMN IF NOT EXISTS status     TEXT NOT NULL DEFAULT 'available';
 ALTER TABLE public.marketplace_listings ADD COLUMN IF NOT EXISTS visibility TEXT NOT NULL DEFAULT 'public';
 ALTER TABLE public.marketplace_listings ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT now();
 
+ALTER TABLE public.marketplace_listings DROP CONSTRAINT IF EXISTS marketplace_listings_selling_price_nonneg;
+ALTER TABLE public.marketplace_listings ADD CONSTRAINT marketplace_listings_selling_price_nonneg CHECK (selling_price >= 0);
+ALTER TABLE public.marketplace_listings DROP CONSTRAINT IF EXISTS marketplace_listings_original_value_nonneg;
+ALTER TABLE public.marketplace_listings ADD CONSTRAINT marketplace_listings_original_value_nonneg CHECK (original_value >= 0);
+
 ALTER TABLE public.marketplace_listings ENABLE ROW LEVEL SECURITY;
 
+-- Live carries one combined "Users can manage own listings" FOR ALL policy
+-- (covers select/insert/update/delete for the seller) instead of this
+-- file's split per-command policies — replace it with the explicit split
+-- so every operation is individually traceable to a named policy here.
+-- listings_select_own additionally covers the seller's own non-'available'
+-- rows (cancelled/sold), which the combined policy granted implicitly.
+DROP POLICY IF EXISTS "Users can manage own listings" ON public.marketplace_listings;
 DROP POLICY IF EXISTS "listings_select" ON public.marketplace_listings;
+DROP POLICY IF EXISTS "listings_select_own" ON public.marketplace_listings;
 DROP POLICY IF EXISTS "listings_insert" ON public.marketplace_listings;
 DROP POLICY IF EXISTS "listings_update" ON public.marketplace_listings;
 DROP POLICY IF EXISTS "listings_delete" ON public.marketplace_listings;
@@ -208,6 +290,9 @@ DROP POLICY IF EXISTS "listings_delete" ON public.marketplace_listings;
 -- further below, after public.friendships and public.trusted_network_ids()
 -- exist — it needs both to scope 'friends_only' (Trusted Community)
 -- visibility to the seller's network.
+
+CREATE POLICY "listings_select_own" ON public.marketplace_listings
+  FOR SELECT TO authenticated USING (seller_id = auth.uid());
 
 CREATE POLICY "listings_insert" ON public.marketplace_listings
   FOR INSERT TO authenticated WITH CHECK (seller_id = auth.uid());
@@ -272,6 +357,16 @@ WHERE rc.brand_id IS NULL
 
 ALTER TABLE public.referral_codes ENABLE ROW LEVEL SECURITY;
 
+-- Same drift pattern again: live carries four overlapping dashboard-named
+-- SELECT-ish policies here (two of which are narrower subsets of what
+-- referrals_select already covers), so this section never converged
+-- either.
+DROP POLICY IF EXISTS "Anyone can view public referral codes" ON public.referral_codes;
+DROP POLICY IF EXISTS "Users can read referral codes" ON public.referral_codes;
+DROP POLICY IF EXISTS "Users can view own referral codes" ON public.referral_codes;
+DROP POLICY IF EXISTS "Users can create own referral codes" ON public.referral_codes;
+DROP POLICY IF EXISTS "Users can update own referral codes" ON public.referral_codes;
+DROP POLICY IF EXISTS "Users can delete own referral codes" ON public.referral_codes;
 DROP POLICY IF EXISTS "referrals_select" ON public.referral_codes;
 DROP POLICY IF EXISTS "referrals_insert" ON public.referral_codes;
 DROP POLICY IF EXISTS "referrals_update" ON public.referral_codes;
@@ -381,8 +476,26 @@ CREATE TABLE IF NOT EXISTS public.friendships (
 
 ALTER TABLE public.friendships ENABLE ROW LEVEL SECURITY;
 
+-- Same drift pattern again: the live project accumulated FIVE overlapping
+-- dashboard-named policies here (two near-identical SELECTs, two
+-- near-identical INSERTs, two near-identical UPDATEs — none named
+-- "friendships_select" etc), so this section never actually converged
+-- either. Also: the live table has no UPDATE column-level need beyond
+-- accept/decline, so no dedicated "friendships_update" policy exists here
+-- — accept/decline goes through app code that only ever sets status, and
+-- there's historically been no UPDATE policy tracked in this file at all,
+-- even though "Users can update friendships involving them" exists live.
+-- Add it here as friendships_update so it's finally tracked.
+DROP POLICY IF EXISTS "Users can view friendships involving them" ON public.friendships;
+DROP POLICY IF EXISTS "Users can read their friendships" ON public.friendships;
+DROP POLICY IF EXISTS "Users can create friend requests" ON public.friendships;
+DROP POLICY IF EXISTS "Users can create friendship requests" ON public.friendships;
+DROP POLICY IF EXISTS "Users can update friendships involving them" ON public.friendships;
+DROP POLICY IF EXISTS "Users can update their friendships" ON public.friendships;
+DROP POLICY IF EXISTS "Users can delete their friendships" ON public.friendships;
 DROP POLICY IF EXISTS "friendships_select" ON public.friendships;
 DROP POLICY IF EXISTS "friendships_insert" ON public.friendships;
+DROP POLICY IF EXISTS "friendships_update" ON public.friendships;
 DROP POLICY IF EXISTS "friendships_delete" ON public.friendships;
 
 CREATE POLICY "friendships_select" ON public.friendships
@@ -392,8 +505,18 @@ CREATE POLICY "friendships_select" ON public.friendships
 CREATE POLICY "friendships_insert" ON public.friendships
   FOR INSERT TO authenticated WITH CHECK (requester_id = auth.uid());
 
+CREATE POLICY "friendships_update" ON public.friendships
+  FOR UPDATE TO authenticated
+  USING (requester_id = auth.uid() OR receiver_id = auth.uid())
+  WITH CHECK (requester_id = auth.uid() OR receiver_id = auth.uid());
+
+-- Both requester_id = auth.uid() AND receiver_id = auth.uid() are required:
+-- declineFriendRequest() in src/app.js deletes as the receiver, and
+-- removeFriend() deletes from either side. The narrower
+-- requester-only version previously tracked in this file (never actually
+-- applied live, see comment above) would have broken both of those.
 CREATE POLICY "friendships_delete" ON public.friendships
-  FOR DELETE TO authenticated USING (requester_id = auth.uid());
+  FOR DELETE TO authenticated USING (requester_id = auth.uid() OR receiver_id = auth.uid());
 
 -- ============================================================
 -- Trusted Community: a marketplace listing's "friends"-visibility means
@@ -433,17 +556,13 @@ $$;
 
 GRANT EXECUTE ON FUNCTION public.trusted_network_ids(UUID) TO authenticated;
 
--- Real definition of listings_select. NOTE: the live project's actual
--- status/visibility enums do NOT match this file's CREATE TABLE stanza
--- above (that block is stale/aspirational — same drift documented for
--- brands earlier in this file) — live CHECK constraints are
--- status IN ('available','reserved','sold','cancelled') and
--- visibility IN ('public','friends_only'), and the live SELECT policy is
--- named "Anyone can view public available listings", not "listings_select".
+-- Public-visibility SELECT policy, named "Anyone can view public available
+-- listings" on the live project (kept as-is rather than renamed, since it's
+-- user-facing-adjacent and already referenced in dashboard audit history).
 -- Public listings are visible to everyone; 'friends_only' (Trusted
 -- Community) listings are visible only within the seller's trusted
--- network; sellers always see their own via the separate
--- "Users can manage own listings" FOR ALL policy.
+-- network; sellers always see their own (any status) via the separate
+-- listings_select_own policy defined above.
 DROP POLICY IF EXISTS "listings_select" ON public.marketplace_listings;
 DROP POLICY IF EXISTS "Anyone can view public available listings" ON public.marketplace_listings;
 
@@ -466,20 +585,45 @@ CREATE TABLE IF NOT EXISTS public.notifications (
   id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id           UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   voucher_id        UUID REFERENCES public.vouchers(id) ON DELETE CASCADE,
-  notification_type TEXT NOT NULL DEFAULT 'reminder',
-  reminder_date     DATE,
+  notification_type TEXT NOT NULL DEFAULT 'expiry_reminder'
+                       CHECK (notification_type IN ('expiry_reminder', 'reminder')),
+  reminder_date     DATE NOT NULL,
+  reminder_time     TIME,
   sent              BOOLEAN NOT NULL DEFAULT false,
   sent_at           TIMESTAMPTZ,
+  dismissed_at      TIMESTAMPTZ,
   created_at        TIMESTAMPTZ DEFAULT now()
 );
 
 -- Add missing columns to existing table safely
-ALTER TABLE public.notifications ADD COLUMN IF NOT EXISTS notification_type TEXT NOT NULL DEFAULT 'reminder';
+ALTER TABLE public.notifications ADD COLUMN IF NOT EXISTS notification_type TEXT NOT NULL DEFAULT 'expiry_reminder';
+ALTER TABLE public.notifications ADD COLUMN IF NOT EXISTS reminder_time     TIME;
 ALTER TABLE public.notifications ADD COLUMN IF NOT EXISTS sent              BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE public.notifications ADD COLUMN IF NOT EXISTS sent_at          TIMESTAMPTZ;
+-- dismissed_at fixes a real model bug: sent/sent_at used to be written by
+-- TWO unrelated events — the send-daily-push cron job (a push was actually
+-- delivered) AND dismissReminder() in the client (the user tapped "remove
+-- reminder" on a banner, before it ever fired). Conflating the two meant
+-- sent_at could record a dismissal as if it were a delivery, and there was
+-- no way to tell "delivered" apart from "cancelled by the user" after the
+-- fact. Now: sent/sent_at is server-owned only; dismissed_at is
+-- client-owned only. send-daily-push checks both (sent = false AND
+-- dismissed_at IS NULL) before pushing.
+ALTER TABLE public.notifications ADD COLUMN IF NOT EXISTS dismissed_at TIMESTAMPTZ;
+ALTER TABLE public.notifications DROP CONSTRAINT IF EXISTS notifications_notification_type_check;
+ALTER TABLE public.notifications ADD CONSTRAINT notifications_notification_type_check
+  CHECK (notification_type IN ('expiry_reminder', 'reminder'));
 
 ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
 
+-- Same drift pattern as brands/vouchers/friendships above: live has these
+-- under dashboard names (including two overlapping SELECT policies), so
+-- this section's own DROP/CREATE names never matched and kept no-op'ing.
+DROP POLICY IF EXISTS "Users can view own notifications" ON public.notifications;
+DROP POLICY IF EXISTS "Users can read own notifications" ON public.notifications;
+DROP POLICY IF EXISTS "Users can create own notifications" ON public.notifications;
+DROP POLICY IF EXISTS "Users can update own notifications" ON public.notifications;
+DROP POLICY IF EXISTS "Users can delete own notifications" ON public.notifications;
 DROP POLICY IF EXISTS "notifications_select" ON public.notifications;
 DROP POLICY IF EXISTS "notifications_insert" ON public.notifications;
 DROP POLICY IF EXISTS "notifications_update" ON public.notifications;
@@ -525,6 +669,43 @@ CREATE POLICY "extraction_log_select" ON public.voucher_extraction_log
 
 CREATE POLICY "extraction_log_insert" ON public.voucher_extraction_log
   FOR INSERT TO authenticated WITH CHECK (user_id = auth.uid());
+
+-- ============================================================
+-- public.voucher_files  (one row per photo/PDF attached to a voucher —
+-- a voucher can have several; replaces the older single image_url/
+-- photo_url columns for new uploads. Referenced by claim_voucher_gift
+-- below, which reassigns ownership on gift claim, and by the
+-- voucher-photos storage policies further down.)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS public.voucher_files (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  voucher_id UUID NOT NULL REFERENCES public.vouchers(id) ON DELETE CASCADE,
+  user_id    UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  file_path  TEXT NOT NULL,
+  file_type  TEXT NOT NULL DEFAULT 'image' CHECK (file_type IN ('image', 'pdf')),
+  position   INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.voucher_files TO authenticated;
+ALTER TABLE public.voucher_files ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "voucher_files_select" ON public.voucher_files;
+DROP POLICY IF EXISTS "voucher_files_insert" ON public.voucher_files;
+DROP POLICY IF EXISTS "voucher_files_update" ON public.voucher_files;
+DROP POLICY IF EXISTS "voucher_files_delete" ON public.voucher_files;
+
+CREATE POLICY "voucher_files_select" ON public.voucher_files
+  FOR SELECT TO authenticated USING (user_id = auth.uid());
+
+CREATE POLICY "voucher_files_insert" ON public.voucher_files
+  FOR INSERT TO authenticated WITH CHECK (user_id = auth.uid());
+
+CREATE POLICY "voucher_files_update" ON public.voucher_files
+  FOR UPDATE TO authenticated USING (user_id = auth.uid()) WITH CHECK (user_id = auth.uid());
+
+CREATE POLICY "voucher_files_delete" ON public.voucher_files
+  FOR DELETE TO authenticated USING (user_id = auth.uid());
 
 -- ============================================================
 -- public.voucher_gifts  (send a voucher to a friend via a claim
@@ -658,3 +839,127 @@ CREATE POLICY "voucher_photos_delete" ON storage.objects
 --   FOR INSERT TO authenticated WITH CHECK (
 --     bucket_id = 'voucher-photos' AND (storage.foldername(name))[1] = auth.uid()::text
 --   );
+
+-- ============================================================
+-- public.push_subscriptions  (Web Push subscription per device/browser)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS public.push_subscriptions (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id    UUID NOT NULL REFERENCES auth.users(id),
+  endpoint   TEXT NOT NULL UNIQUE,
+  p256dh     TEXT NOT NULL,
+  auth       TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.push_subscriptions TO authenticated;
+ALTER TABLE public.push_subscriptions ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "push_sub select" ON public.push_subscriptions;
+DROP POLICY IF EXISTS "push_sub insert" ON public.push_subscriptions;
+DROP POLICY IF EXISTS "push_sub update" ON public.push_subscriptions;
+DROP POLICY IF EXISTS "push_sub delete" ON public.push_subscriptions;
+DROP POLICY IF EXISTS "push_subscriptions_select" ON public.push_subscriptions;
+DROP POLICY IF EXISTS "push_subscriptions_insert" ON public.push_subscriptions;
+DROP POLICY IF EXISTS "push_subscriptions_update" ON public.push_subscriptions;
+DROP POLICY IF EXISTS "push_subscriptions_delete" ON public.push_subscriptions;
+
+CREATE POLICY "push_subscriptions_select" ON public.push_subscriptions
+  FOR SELECT TO authenticated USING (user_id = auth.uid());
+
+CREATE POLICY "push_subscriptions_insert" ON public.push_subscriptions
+  FOR INSERT TO authenticated WITH CHECK (user_id = auth.uid());
+
+CREATE POLICY "push_subscriptions_update" ON public.push_subscriptions
+  FOR UPDATE TO authenticated USING (user_id = auth.uid()) WITH CHECK (user_id = auth.uid());
+
+CREATE POLICY "push_subscriptions_delete" ON public.push_subscriptions
+  FOR DELETE TO authenticated USING (user_id = auth.uid());
+
+-- ============================================================
+-- public.push_notification_log  (which expiry pushes have already been
+-- sent, so send-daily-push doesn't resend the same reminder — the
+-- edge function itself runs as service_role and bypasses RLS to write
+-- here; the client-facing SELECT policy below is read-only for the
+-- owning user, e.g. for potential future "reminders sent" UI)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS public.push_notification_log (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id     UUID NOT NULL REFERENCES auth.users(id),
+  voucher_id  UUID NOT NULL REFERENCES public.vouchers(id) ON DELETE CASCADE,
+  days_before INTEGER NOT NULL,
+  sent_at     TIMESTAMPTZ DEFAULT now(),
+  UNIQUE (user_id, voucher_id, days_before)
+);
+
+-- voucher_id had no foreign key at all on the live project — nothing
+-- enforced or cascaded cleanup if a voucher was deleted. Verified zero
+-- orphaned rows existed before adding this.
+ALTER TABLE public.push_notification_log DROP CONSTRAINT IF EXISTS push_notification_log_voucher_id_fkey;
+ALTER TABLE public.push_notification_log ADD CONSTRAINT push_notification_log_voucher_id_fkey
+  FOREIGN KEY (voucher_id) REFERENCES public.vouchers(id) ON DELETE CASCADE;
+
+ALTER TABLE public.push_notification_log ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "users read own push log" ON public.push_notification_log;
+DROP POLICY IF EXISTS "push_notification_log_select" ON public.push_notification_log;
+
+CREATE POLICY "push_notification_log_select" ON public.push_notification_log
+  FOR SELECT TO authenticated USING (user_id = auth.uid());
+
+-- ============================================================
+-- Scheduled job (pg_cron): fires send-daily-push every 5 minutes via
+-- pg_net, authenticated with the service_role key from Vault. This is
+-- project-level cron config, not a table/policy — recorded here so it's
+-- not only discoverable via the dashboard.
+-- ============================================================
+SELECT cron.schedule(
+  'send-daily-push',
+  '*/5 * * * *',
+  $$
+    select net.http_post(
+      url := 'https://ynlsrbtzcarjsqnldqyc.supabase.co/functions/v1/send-daily-push',
+      headers := jsonb_build_object(
+        'Content-Type', 'application/json',
+        'Authorization', 'Bearer ' || (select decrypted_secret from vault.decrypted_secrets where name = 'service_role_key' limit 1)
+      ),
+      body := '{}'::jsonb
+    );
+  $$
+) WHERE NOT EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'send-daily-push');
+
+-- ============================================================
+-- Missing FK indexes. Every RLS policy in this file filters by exactly
+-- these columns (user_id/seller_id/voucher_id/etc) — without an index,
+-- every RLS-scoped query was doing a sequential scan. Purely additive,
+-- safe to run anytime.
+-- ============================================================
+CREATE INDEX IF NOT EXISTS vouchers_user_id_idx ON public.vouchers (user_id);
+CREATE INDEX IF NOT EXISTS vouchers_brand_id_idx ON public.vouchers (brand_id);
+CREATE INDEX IF NOT EXISTS marketplace_listings_voucher_id_idx ON public.marketplace_listings (voucher_id);
+CREATE INDEX IF NOT EXISTS marketplace_listings_seller_id_idx ON public.marketplace_listings (seller_id);
+CREATE INDEX IF NOT EXISTS referral_codes_user_id_idx ON public.referral_codes (user_id);
+CREATE INDEX IF NOT EXISTS referral_codes_brand_id_idx ON public.referral_codes (brand_id);
+CREATE INDEX IF NOT EXISTS referral_code_uses_user_id_idx ON public.referral_code_uses (user_id);
+CREATE INDEX IF NOT EXISTS notifications_user_id_idx ON public.notifications (user_id);
+CREATE INDEX IF NOT EXISTS notifications_voucher_id_idx ON public.notifications (voucher_id);
+CREATE INDEX IF NOT EXISTS push_subscriptions_user_id_idx ON public.push_subscriptions (user_id);
+CREATE INDEX IF NOT EXISTS voucher_extraction_log_user_id_idx ON public.voucher_extraction_log (user_id);
+CREATE INDEX IF NOT EXISTS voucher_gifts_voucher_id_idx ON public.voucher_gifts (voucher_id);
+CREATE INDEX IF NOT EXISTS voucher_gifts_sender_id_idx ON public.voucher_gifts (sender_id);
+CREATE INDEX IF NOT EXISTS voucher_gifts_claimed_by_idx ON public.voucher_gifts (claimed_by);
+CREATE INDEX IF NOT EXISTS voucher_files_user_id_idx ON public.voucher_files (user_id);
+CREATE INDEX IF NOT EXISTS friendships_receiver_id_idx ON public.friendships (receiver_id);
+CREATE INDEX IF NOT EXISTS brands_created_by_idx ON public.brands (created_by);
+CREATE INDEX IF NOT EXISTS push_notification_log_voucher_id_idx ON public.push_notification_log (voucher_id);
+
+-- ============================================================
+-- Not app schema — do not remove: public.rls_auto_enable() is a
+-- Supabase-platform-generated event trigger function (event trigger
+-- "ensure_rls", fires on every CREATE TABLE in the public schema) that
+-- auto-enables RLS on any newly created table as a safety net. It predates
+-- this file, isn't authored by this project, and every ALTER TABLE ...
+-- ENABLE ROW LEVEL SECURITY statement above is redundant with it — kept
+-- explicit anyway so this script doesn't silently depend on project-level
+-- config that isn't tracked in version control.
+-- ============================================================

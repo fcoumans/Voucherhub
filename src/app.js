@@ -65,11 +65,6 @@ const daysUntil = (dateStr) => {
   return Math.round((exp - today) / 86400000);
 };
 
-const todayStr = () => {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-};
-
 const nowDateTimeLocalStr = () => {
   const d = new Date();
   const pad = n => String(n).padStart(2, '0');
@@ -166,9 +161,6 @@ function mapUser(supabaseUser) {
   };
 }
 
-// syncUserToSupabase disabled — public.users not queried until RLS/schema is confirmed
-function syncUserToSupabase() {}
-
 // Fire-and-forget: stamps last_active_at whenever a session starts (login,
 // signup, or an existing session resuming on app load). Never blocks the
 // auth flow on this — a failure here shouldn't stop the user from logging in.
@@ -200,6 +192,7 @@ function mapVoucher(row) {
     id:               row.id,
     userId:           row.user_id,
     brand:            row.brand,
+    brandId:          row.brand_id || null,
     value:            row.amount != null ? String(row.amount) : '',
     valueDescription: row.value_description || '',
     balance:          row.balance != null ? String(row.balance) : null,
@@ -225,6 +218,7 @@ function voucherToDb(v) {
   return {
     user_id:           v.userId,
     brand:             v.brand,
+    brand_id:          getBrandByName(v.brand)?.id || null,
     amount:            isDescription ? null : (parseFloat(v.value) || null),
     value_description: isDescription ? (v.valueDescription || null) : null,
     balance:           !isDescription && v.balance !== '' && v.balance != null ? parseFloat(v.balance) : null,
@@ -308,7 +302,7 @@ function mapReminder(row) {
     reminderDate: row.reminder_date,
     reminderTime: row.reminder_time ? row.reminder_time.slice(0, 5) : null,
     note:         '',
-    dismissed:    row.sent || false,
+    dismissed:    !!row.dismissed_at,
     createdAt:    row.created_at,
   };
 }
@@ -1465,7 +1459,7 @@ async function setReminder(voucherId, date, time) {
 async function dismissReminder(id) {
   const { error } = await supabase
     .from('notifications')
-    .update({ sent: true, sent_at: new Date().toISOString() })
+    .update({ dismissed_at: new Date().toISOString() })
     .eq('id', id)
     .eq('user_id', state.currentUser.id);
   if (error) { console.error('dismissReminder error:', error); showToast('Error dismissing reminder'); return; }

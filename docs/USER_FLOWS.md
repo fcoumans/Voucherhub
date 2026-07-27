@@ -64,8 +64,7 @@ The app should be designed around these flows first.
 2. User taps “Sell Voucher”.
 3. User enters:
    - Selling price
-   - Discount percentage
-   - Visibility: public or friends only
+   - Visibility: Public (Browse tab, open to everyone) or Trusted Community only (visible only to friends and friends of friends)
 4. User confirms the voucher is valid and unused.
 5. Listing is created.
 6. Voucher status changes to `listed`.
@@ -74,9 +73,9 @@ The app should be designed around these flows first.
 
 # Flow 6: Browse Marketplace
 
-1. User opens “Marketplace”.
-2. User searches by brand or category.
-3. User sees available vouchers.
+1. User opens “Marketplace”, which has three tabs: Browse, Trusted Community, and My Listings.
+2. User searches by brand.
+3. Browse shows public listings from everyone; Trusted Community shows listings from the user's friends and friends of friends (including their non-public ones).
 4. User opens a listing.
 5. User sees:
    - Brand

@@ -1,5 +1,13 @@
 # Roadmap
 
+> **Status: historical.** This was the original phased plan, written when
+> the stack was still expected to be React Native/Expo (it ended up as a
+> vanilla-JS Vite web app + PWA instead — see `docs/AI_INSTRUCTIONS.md`).
+> Phases 1 through 8 below have all shipped in some form, including the
+> friend system and friends-only listings called out in Phase 8. Treat
+> this as a record of intent, not a live plan — check the code for what
+> actually exists.
+
 ## Phase 1 - Foundation & Backend
 
 Goal: Create a working application architecture.

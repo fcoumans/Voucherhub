@@ -73,19 +73,8 @@ p { line-height: 1.5; }
 .text-warning { color: var(--warning); }
 .text-danger { color: var(--danger); }
 .text-success { color: var(--success); }
-.text-primary { color: var(--primary); }
-.text-sm { font-size: 0.8125rem; }
 .text-xs { font-size: 0.75rem; }
 .fw-600 { font-weight: 600; }
-
-/* ============================================================
-   APP SHELL
-   ============================================================ */
-.app-shell {
-  display: flex;
-  flex-direction: column;
-  min-height: 100dvh;
-}
 
 /* Header */
 .app-header {
@@ -368,14 +357,6 @@ p { line-height: 1.5; }
 }
 
 .form-group textarea { resize: vertical; min-height: 80px; }
-
-.form-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-}
-
-.form-row .form-group { margin-bottom: 0; }
 
 .form-hint {
   font-size: 0.75rem;
@@ -2004,24 +1985,6 @@ p { line-height: 1.5; }
 }
 
 /* ============================================================
-   SECTION TITLE WITH BADGE
-   ============================================================ */
-.section-with-count {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.count-pill {
-  background: var(--primary-light);
-  color: var(--primary-dark);
-  font-size: 0.6875rem;
-  font-weight: 700;
-  padding: 2px 7px;
-  border-radius: 10px;
-}
-
-/* ============================================================
    TABS (inline)
    ============================================================ */
 .inline-tabs {
@@ -2074,21 +2037,6 @@ p { line-height: 1.5; }
   background: var(--border);
   margin: 16px 0;
 }
-
-/* ============================================================
-   UTILITY
-   ============================================================ */
-.mt-8 { margin-top: 8px; }
-.mt-12 { margin-top: 12px; }
-.mt-16 { margin-top: 16px; }
-.mt-20 { margin-top: 20px; }
-.mb-16 { margin-bottom: 16px; }
-.mb-20 { margin-bottom: 20px; }
-.flex { display: flex; }
-.flex-center { display: flex; align-items: center; }
-.gap-8 { gap: 8px; }
-.gap-12 { gap: 12px; }
-.flex-1 { flex: 1; }
 
 /* ============================================================
    PASSWORD TOGGLE
@@ -2148,23 +2096,6 @@ p { line-height: 1.5; }
 }
 
 .sort-select:focus { border-color: var(--primary); }
-
-/* ============================================================
-   REMINDER BANNER
-   ============================================================ */
-.reminder-banner {
-  background: var(--warning-light);
-  border: 1.5px solid var(--warning);
-  border-radius: var(--radius-sm);
-  padding: 12px 14px;
-  margin-bottom: 10px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: var(--text);
-}
 
 .reminder-info-bar {
   display: flex;

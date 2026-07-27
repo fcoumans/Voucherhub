@@ -139,6 +139,7 @@ Deno.serve(async (req) => {
     .select('id, user_id, voucher_id, reminder_date, reminder_time')
     .eq('notification_type', 'reminder')
     .eq('sent', false)
+    .is('dismissed_at', null)
     .lte('reminder_date', todayStr);
 
   if (rErr) console.error('fetchReminders error:', rErr.message);

@@ -2,16 +2,26 @@
 
 ## Purpose
 
-This document defines the core database structure for Voucher Hub.
+This document defines the core database structure for Voucher Hub (VoucherWise).
 
-The database should support:
+The database supports:
 
 - User accounts
 - Personal voucher storage
 - Voucher expiry tracking
-- Voucher marketplace listings
+- Voucher marketplace listings (public + Trusted Community)
 - Referral codes
-- Notifications
+- Notifications and push reminders
+- Friendships / Trusted Community
+- Voucher gifting between users
+- AI photo/PDF extraction of voucher details
+- Voucher photo/file storage
+
+This document is generated from the live schema (Supabase project `ynlsrbtzcarjsqnldqyc`,
+last verified 2026-07-27) — not from `supabase/migrations.sql`, which only tracks a
+subset of tables and has drifted from what's actually deployed. If the two disagree,
+the database is correct and `migrations.sql` should be treated as best-effort history,
+not a source of truth.
 
 ---
 
@@ -19,17 +29,22 @@ The database should support:
 
 ## users
 
-Stores basic user profile information.
+Stores basic user profile information. Row is auto-created by the `handle_new_user`
+trigger on `auth.users` insert (i.e. on signup).
 
 | Field | Type | Notes |
 |---|---|---|
-| id | UUID | Primary key |
-| email | String | Unique |
+| id | UUID | Primary key, FK → `auth.users.id` (cascade delete) |
+| email | String | Unique, not null |
 | first_name | String | Optional, title-cased (initcap) |
 | last_name | String | Optional, title-cased (initcap) |
-| avatar_url | String | Optional |
-| last_active_at | Timestamp | Stamped on login/session-resume |
+| avatar_url | String | **Dead column** — 0% populated, zero code references anywhere. |
+| last_active_at | Timestamp | Stamped on login/session-resume and periodically on activity |
 | created_at | Timestamp | Auto-generated |
+
+Note: accounts created before the first_name/last_name split may only have a
+combined `name` in their `auth.users` metadata — the client (`mapUser()` in
+`src/app.js`) falls back to splitting that for display.
 
 ---
 
@@ -40,20 +55,45 @@ Stores vouchers owned by users.
 | Field | Type | Notes |
 |---|---|---|
 | id | UUID | Primary key |
-| user_id | UUID | Links to users.id |
-| brand | String | Store or company name |
-| category | String | Example: restaurant, fashion, travel |
-| amount | Decimal | Original voucher value |
-| remaining_amount | Decimal | Current remaining value |
-| currency | String | EUR, USD, GBP |
+| user_id | UUID | FK → users.id (cascade delete), indexed |
+| brand | String | Store or company name, not null — freeform autocomplete text, not constrained to `brands.name` |
+| brand_id | UUID | FK → brands.id (set null on delete), indexed — best-effort enrichment resolved via `getBrandByName()` after `ensureBrand()` in `src/app.js`; nullable, not an enforced relationship the UI depends on |
+| category | String | e.g. restaurant, fashion, travel |
+| amount | Decimal | Original voucher value — nullable, but `amount` or `value_description` must be set. CHECK: `amount IS NULL OR amount >= 0` |
+| remaining_amount | Decimal | **Dead column** — 0% populated, zero code references, fully superseded by `balance`. Kept for now (not dropped as part of this cleanup pass). |
+| currency | String | EUR, USD, GBP, ... (default `EUR`) |
 | voucher_code | String | Voucher code |
 | pin | String | Optional PIN |
 | expiration_date | Date | Expiry date |
-| image_url | String | Uploaded photo/screenshot |
+| image_url | String | **Dead column** — 0% populated, zero code references. Fully superseded by `voucher_files`. |
 | notes | Text | Terms, restrictions, extra info |
-| status | Enum | active, used, expired, listed, sold |
+| status | Enum | `active`, `used`, `expired`, `listed`, `sold` |
+| voucher_type | Enum | `gift_card`, `store_credit` (default `gift_card`) |
+| copy_count | Integer | How many times the code was copied (default 0) |
+| balance | Decimal | Current remaining value (used in place of `remaining_amount`). CHECK: `balance IS NULL OR balance >= 0` |
+| photo_url | String | **Dead column** — only 1 legacy row has a value (predates `voucher_files`), zero code references today. Do not assume this is "the" photo field — it isn't. |
+| barcode_path | String | Storage path of an extracted/uploaded barcode image |
+| value_description | Text | Free-text value when there's no fixed amount (e.g. "Weekend getaway for two") |
+| gift_message | Text | Optional note attached when gifting a voucher |
+| gift_sender | Text | Display name of the gifter, set on claim |
 | created_at | Timestamp | Auto-generated |
-| updated_at | Timestamp | Auto-generated |
+| updated_at | Timestamp | **Not currently maintained** — no trigger updates it and the app never sets it on update, so it's frozen at insert time forever despite the name. Either wire up an auto-update trigger or drop it; don't rely on it meaning "last updated." |
+
+---
+
+## voucher_files
+
+One row per photo/PDF attached to a voucher (a voucher can have several — front, back, etc.). Replaces the older single `image_url`/`photo_url` fields for new uploads.
+
+| Field | Type | Notes |
+|---|---|---|
+| id | UUID | Primary key |
+| voucher_id | UUID | FK → vouchers.id (cascade delete), indexed |
+| user_id | UUID | FK → auth.users.id (cascade delete) — owner, for RLS. Indexed |
+| file_path | String | Path within the `voucher-photos` storage bucket |
+| file_type | Enum | `image`, `pdf` (default `image`) |
+| position | Integer | Display order (default 0) |
+| created_at | Timestamp | Auto-generated |
 
 ---
 
@@ -64,16 +104,16 @@ Stores vouchers listed for sale.
 | Field | Type | Notes |
 |---|---|---|
 | id | UUID | Primary key |
-| voucher_id | UUID | Links to vouchers.id |
-| seller_id | UUID | Links to users.id |
-| original_value | Decimal | Voucher value |
-| selling_price | Decimal | Price seller wants |
-| discount_percentage | Decimal | Calculated field |
-| currency | String | EUR, USD, GBP |
-| status | Enum | available, reserved, sold, cancelled |
-| visibility | Enum | public, friends_only — `friends_only` is the Trusted Community tier: visible only within the seller's network (direct friends + friends of friends, see `trusted_network_ids()`), never in public Browse |
+| voucher_id | UUID | FK → vouchers.id (cascade delete), indexed |
+| seller_id | UUID | FK → users.id (cascade delete), indexed |
+| original_value | Decimal | Voucher value. CHECK: `>= 0` |
+| selling_price | Decimal | Price seller wants. CHECK: `>= 0` |
+| discount_percentage | Decimal | A real `GENERATED ALWAYS AS (...) STORED` column (not a plain default) — always in sync with `original_value`/`selling_price`, can't drift. The client currently ignores it and recomputes the same number in JS (`discountPct()`) instead of reading it — redundant but harmless. |
+| currency | String | EUR, USD, GBP (default `EUR`) |
+| status | Enum | `available`, `reserved`, `sold`, `cancelled` |
+| visibility | Enum | `public`, `friends_only` — `friends_only` is the Trusted Community tier: visible only within the seller's network (direct friends + friends of friends, see `trusted_network_ids()` below), never in public Browse |
 | created_at | Timestamp | Auto-generated |
-| updated_at | Timestamp | Auto-generated |
+| updated_at | Timestamp | **Not currently maintained** — same issue as `vouchers.updated_at`, see there. |
 
 ---
 
@@ -84,29 +124,71 @@ Stores referral codes added by users or the platform.
 | Field | Type | Notes |
 |---|---|---|
 | id | UUID | Primary key |
-| user_id | UUID | Owner of the code, nullable for platform-owned codes |
-| brand | String | Brand or app name |
+| user_id | UUID | Owner of the code, FK → users.id (nullable — platform-owned codes have no owner) |
+| brand | String | Brand or app name, not null |
+| brand_id | UUID | FK → brands.id, backfilled by matching `brand` name |
 | code | String | Referral code |
 | referral_link | String | Optional link |
 | benefit_for_new_user | Text | Example: €10 discount |
 | benefit_for_referrer | Text | Example: €10 credit |
-| visibility | Enum | public, friends_only, private |
+| visibility | Enum | `public`, `friends`, `private` |
+| category | String | e.g. Travel, Food, Shopping |
+| terms | Text | Terms & conditions |
 | expiration_date | Date | Optional |
-| used_count | Integer | Denormalized count, kept in sync from referral_code_uses |
+| used_count | Integer | Denormalized count, kept in sync from `referral_code_uses` via trigger |
 | created_at | Timestamp | Auto-generated |
 
 ---
 
 ## referral_code_uses
 
-One row per (referral code, user) mark of "I used this" — never the code's own owner (enforced by RLS). Drives referral_codes.used_count via a trigger.
+One row per (referral code, user) mark of "I used this" — never the code's own owner (enforced by RLS). Drives `referral_codes.used_count` via the `sync_referral_used_count` trigger.
 
 | Field | Type | Notes |
 |---|---|---|
 | id | UUID | Primary key |
-| referral_id | UUID | Links to referral_codes.id |
-| user_id | UUID | The user who marked it used |
+| referral_id | UUID | FK → referral_codes.id (cascade delete) |
+| user_id | UUID | FK → auth.users.id (cascade delete) — the user who marked it used |
 | created_at | Timestamp | Auto-generated |
+
+Unique on `(referral_id, user_id)` — one mark per user per code.
+
+---
+
+## friendships
+
+Stores friend relationships between users. Undirected in practice — either
+side can be `requester_id` or `receiver_id`.
+
+| Field | Type | Notes |
+|---|---|---|
+| id | UUID | Primary key |
+| requester_id | UUID | FK → users.id (cascade delete) |
+| receiver_id | UUID | FK → users.id (cascade delete) |
+| status | Enum | `pending`, `accepted`, `declined`, `blocked` |
+| created_at | Timestamp | Auto-generated |
+| updated_at | Timestamp | Auto-generated |
+
+Unique on `(requester_id, receiver_id)`. Check constraint prevents `requester_id = receiver_id`.
+
+---
+
+## voucher_gifts
+
+Tracks a voucher sent from one user to another via a claimable link.
+
+| Field | Type | Notes |
+|---|---|---|
+| id | UUID | Primary key |
+| voucher_id | UUID | FK → vouchers.id (cascade delete) |
+| sender_id | UUID | FK → auth.users.id (cascade delete) |
+| status | Enum | `pending`, `claimed`, `cancelled` (default `pending`) |
+| claimed_by | UUID | FK → auth.users.id, set on claim |
+| claimed_at | Timestamp | Set on claim |
+| expires_at | Timestamp | Default `now() + 30 days` |
+| created_at | Timestamp | Auto-generated |
+
+Claiming happens through the `claim_voucher_gift(p_gift_id)` RPC (see Functions below), not a direct table write — it needs to reassign voucher ownership and create a friendship atomically.
 
 ---
 
@@ -117,28 +199,114 @@ Stores reminder notifications for voucher expiry.
 | Field | Type | Notes |
 |---|---|---|
 | id | UUID | Primary key |
-| user_id | UUID | Links to users.id |
-| voucher_id | UUID | Links to vouchers.id |
-| notification_type | Enum | expiry_reminder |
-| reminder_date | Date | When reminder should be sent |
-| sent | Boolean | Default false |
-| sent_at | Timestamp | Optional |
+| user_id | UUID | FK → users.id (cascade delete), indexed |
+| voucher_id | UUID | FK → vouchers.id (cascade delete), indexed |
+| notification_type | Enum | `expiry_reminder`, `reminder` (default `expiry_reminder`) |
+| reminder_date | Date | When reminder should be sent, not null |
+| reminder_time | Time | Time of day for the reminder |
+| sent | Boolean | **Server-owned.** Set only by the `send-daily-push` edge function when a push was actually delivered. Default false. |
+| sent_at | Timestamp | **Server-owned.** Set only alongside `sent`. |
+| dismissed_at | Timestamp | **Client-owned.** Set only by `dismissReminder()` when the user taps "remove reminder" on a banner. `sent`/`sent_at` and `dismissed_at` used to be conflated — both were written by `sent`/`sent_at`, so a user dismissal could get recorded as if a push had actually been delivered, and there was no way to tell the two apart after the fact. `send-daily-push` now checks `sent = false AND dismissed_at IS NULL` before pushing. |
 | created_at | Timestamp | Auto-generated |
 
 ---
 
-## friendships
+## push_subscriptions
 
-Stores friend relationships between users.
+Web Push subscription per device/browser, used by the `send-daily-push` edge function.
 
 | Field | Type | Notes |
 |---|---|---|
 | id | UUID | Primary key |
-| requester_id | UUID | User who sends request |
-| receiver_id | UUID | User who receives request |
-| status | Enum | pending, accepted, declined, blocked |
+| user_id | UUID | FK → auth.users.id, indexed |
+| endpoint | String | Unique — the browser's push endpoint URL |
+| p256dh | String | Push encryption key |
+| auth | String | Push encryption auth secret |
 | created_at | Timestamp | Auto-generated |
-| updated_at | Timestamp | Auto-generated |
+
+---
+
+## push_notification_log
+
+Records which expiry push notifications have already been sent, so the `send-daily-push` cron job doesn't resend the same reminder.
+
+| Field | Type | Notes |
+|---|---|---|
+| id | UUID | Primary key |
+| user_id | UUID | FK → auth.users.id |
+| voucher_id | UUID | FK → vouchers.id (cascade delete) — previously had no foreign key at all; added as part of the architecture cleanup |
+| days_before | Integer | Which reminder threshold this was (e.g. 7, 1) |
+| sent_at | Timestamp | Auto-generated |
+
+Unique on `(user_id, voucher_id, days_before)`.
+
+---
+
+## voucher_extraction_log
+
+Logs every AI photo/PDF extraction attempt (the `extract-voucher` edge function), success or failure — used for monitoring extraction quality.
+
+| Field | Type | Notes |
+|---|---|---|
+| id | UUID | Primary key |
+| user_id | UUID | FK → auth.users.id (cascade delete) |
+| file_type | Enum | `image`, `pdf` |
+| success | Boolean | Not null |
+| error_code | String | Set when `success = false` |
+| created_at | Timestamp | Auto-generated |
+
+---
+
+## brands
+
+Source of truth for brand logos, categories, and autocomplete suggestions across vouchers, referral codes, and the marketplace.
+
+| Field | Type | Notes |
+|---|---|---|
+| id | UUID | Primary key |
+| name | String | Unique, not null |
+| category | String | e.g. Fashion, Travel, Food & Drink |
+| domain | String | Used to fetch a logo and to generate an AI description |
+| logo_url | String | Optional |
+| description | String | Short AI-generated (`enrich-brand` edge function) blurb |
+| created_by | UUID | FK → users.id, set null on delete |
+| created_at | Timestamp | Auto-generated |
+
+---
+
+# Functions & Automation
+
+| Function | Type | Purpose |
+|---|---|---|
+| `handle_new_user()` | Trigger (`on_auth_user_created` on `auth.users`) | Creates the matching `public.users` row on signup, title-casing first/last name from signup metadata |
+| `sync_referral_used_count()` | Trigger (`referral_code_uses_sync` on `referral_code_uses`) | Keeps `referral_codes.used_count` in sync on insert/delete |
+| `trusted_network_ids(p_user uuid)` | RPC, `SECURITY DEFINER` | Returns a user's 1st- and 2nd-degree friend network (friends + friends of friends). Bypasses `friendships` RLS internally (which only lets a user read rows they're a party to — that blocks a plain 2-hop join) and is guarded to only ever compute the caller's own network. Used both by `marketplace_listings`' RLS policy and directly by the client for the Trusted Community tab |
+| `claim_voucher_gift(p_gift_id uuid)` | RPC, `SECURITY DEFINER` | Atomically transfers a gifted voucher (and its files) to the claiming user, marks the gift claimed, and auto-creates a friendship between sender and claimer if none exists |
+| `rls_auto_enable()` | Event trigger (`ensure_rls`, project-level) | Supabase-platform safety net that auto-enables RLS on any newly created `public` table. Not app-specific — don't remove it thinking it's dead |
+
+## Scheduled jobs (pg_cron)
+
+| Job | Schedule | Purpose |
+|---|---|---|
+| `send-daily-push` | Every 5 minutes | Calls the `send-daily-push` edge function via `pg_net`, which sends Web Push expiry reminders and logs them to `push_notification_log` |
+
+---
+
+# Storage
+
+| Bucket | Public | Purpose |
+|---|---|---|
+| `voucher-photos` | No | Voucher photos/PDFs (`voucher_files.file_path`) and extracted barcode images (`vouchers.barcode_path`). Access is scoped per-user via storage RLS policies, keyed off the uploader's folder or ownership of the referencing `voucher_files`/`vouchers` row |
+
+---
+
+# Edge Functions
+
+| Function | Purpose |
+|---|---|
+| `extract-voucher` | AI extraction of brand/amount/code/expiry from an uploaded voucher photo or PDF; logs every attempt to `voucher_extraction_log` |
+| `enrich-brand` | AI-generated short brand description, using the brand's domain (if any) and its assigned category as context |
+| `send-daily-push` | Sends Web Push expiry reminders to subscribed devices; invoked every 5 minutes by the `send-daily-push` pg_cron job |
 
 ---
 
@@ -165,13 +333,18 @@ When sold:
 - voucher.status becomes `sold`
 - marketplace_listings.status becomes `sold`
 
+When a listing is removed without selling (unlist):
+
+- voucher.status returns to `active`
+- marketplace_listings.status becomes `cancelled`
+
 ---
 
 ## Trusted Community
 
 The marketplace has three tabs: Browse (public listings, open to everyone), Trusted Community (listings from the current user's network — direct friends and friends of friends — regardless of visibility), and My Listings.
 
-- `public.trusted_network_ids(p_user)` is a `SECURITY DEFINER` SQL function that returns a user's 1st- and 2nd-degree friend network. It bypasses `friendships` RLS internally (which otherwise only lets a user read friendship rows they're a party to, blocking a 2-hop lookup) and is guarded so it only ever computes the caller's own network (`p_user = auth.uid()`).
+- `public.trusted_network_ids(p_user)` returns a user's 1st- and 2nd-degree friend network (see Functions above).
 - `marketplace_listings`' select RLS policy uses this function to enforce that `visibility = 'friends_only'` rows are only readable by sellers, and by users in the seller's trusted network — this is a real access control, not just client-side tab filtering.
 - A `public` listing from someone in your network still appears in Trusted Community (in addition to Browse) — visibility there is a superset, not a separate pool.
 
@@ -191,30 +364,46 @@ The app should not allow expired vouchers to be listed for sale.
 
 Referral codes can be:
 
-- Platform-owned
-- User-owned
-- Public
-- Friends only
-- Private
+- Platform-owned (no `user_id`) or user-owned
+- Public, friends only, or private (`visibility`)
+- Marked "used" by any non-owner once (`referral_code_uses`), which increments `used_count`
 
 ---
 
-# Future Tables
+# Architecture Cleanup History
 
-These are not required for the MVP.
+**2026-07-27, RLS/migrations.sql accuracy pass:** consolidated duplicate RLS policies
+(`friendships`, `referral_codes`, `notifications`, `vouchers`, `marketplace_listings`
+all carried dashboard-created policies under different names with identical/overlapping
+logic — never actually incorrect access since Postgres ORs permissive policies together,
+but confusing to audit). Brought `supabase/migrations.sql` up to full parity with the
+live schema (all 13 tables now have tracked `CREATE TABLE` statements, including
+`brands`, `vouchers`, `push_subscriptions`, `push_notification_log`, `voucher_files`,
+which previously only existed live via the dashboard).
 
-## transactions
+**2026-07-27, database architecture review:** cross-referenced every column against
+actual app-code usage (not just column names) and live data patterns. Changes made:
 
-For marketplace payments.
+- Added indexes on every FK column that RLS policies filter by (`vouchers.user_id`,
+  `marketplace_listings.voucher_id`/`seller_id`, `referral_codes.user_id`/`brand_id`,
+  `notifications.user_id`/`voucher_id`, `voucher_gifts.*`, `voucher_files.user_id`,
+  `friendships.receiver_id`, and more) — previously almost none were indexed, meaning
+  every RLS-scoped query did a sequential scan.
+- Added the missing `push_notification_log.voucher_id` foreign key (had none at all).
+- Added non-negative CHECK constraints on `vouchers.amount`/`balance` and
+  `marketplace_listings.selling_price`/`original_value`.
+- Fixed a real model bug: `notifications.sent`/`sent_at` was written by two unrelated
+  events (the push cron job delivering a notification, and the user dismissing a
+  reminder banner client-side), making it impossible to tell "delivered" apart from
+  "cancelled by user" after the fact. Split into separate `sent`/`sent_at`
+  (server-owned) and `dismissed_at` (client-owned) columns — see the `notifications`
+  table above.
+- Added `vouchers.brand_id` (FK → `brands.id`, nullable, `ON DELETE SET NULL`),
+  normalizing brand the same way `referral_codes.brand_id` already did. `vouchers.brand`
+  stays freeform autocomplete text; `brand_id` is resolved automatically via
+  `getBrandByName()` in `src/app.js` after every save. Backfilled 41/42 existing rows.
 
-## reviews
-
-For buyer and seller ratings.
-
-## voucher_scans
-
-For AI/OCR extraction history.
-
-## disputes
-
-For marketplace fraud or refund cases.
+**Confirmed dead columns, not yet dropped** (verified against both code and live data —
+zero references, and either zero or near-zero populated rows — but left in place
+pending a deliberate decision to drop them): `vouchers.remaining_amount`,
+`vouchers.image_url`, `vouchers.photo_url`, `users.avatar_url`.

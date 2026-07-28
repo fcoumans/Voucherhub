@@ -1698,14 +1698,12 @@ const navIcons = {
 };
 
 function renderBottomNav() {
-  const pending = state.pendingRequests.length;
   const items = [
     { id: 'home', label: 'Home' },
-    { id: 'vouchers', label: 'Wallet' },
     { id: 'discover', label: 'Discover' },
+    { id: 'vouchers', label: 'Wallet' },
     { id: 'marketplace', label: 'Market' },
     { id: 'referrals', label: 'Referrals' },
-    { id: 'profile', label: 'Profile' },
   ];
   return `
   <nav class="bottom-nav">
@@ -1713,7 +1711,6 @@ function renderBottomNav() {
       <button class="nav-item ${state.view === it.id ? 'active' : ''}" data-nav="${it.id}">
         <div style="position:relative;display:inline-flex">
           ${navIcons[it.id]}
-          ${it.id === 'profile' && pending > 0 ? `<span style="position:absolute;top:-2px;right:-2px;width:8px;height:8px;background:#e53e3e;border-radius:50%;border:1.5px solid #fff"></span>` : ''}
         </div>
         <span class="nav-label">${it.label}</span>
       </button>
@@ -1921,10 +1918,11 @@ function viewHome() {
         <p class="greeting">${greeting},</p>
         <h2>${esc(state.currentUser.name.split(' ')[0])}</h2>
       </div>
-      <button class="btn-icon" data-nav="profile" style="border-radius:50%">
+      <button class="btn-icon" data-nav="profile" style="border-radius:50%;position:relative">
         <div class="avatar" style="background:linear-gradient(150deg,#D6710A 0%,#F98513 100%);width:38px;height:38px;font-size:15px">
           ${esc(initial(state.currentUser.name))}
         </div>
+        ${state.pendingRequests.length > 0 ? `<span style="position:absolute;top:-2px;right:-2px;width:10px;height:10px;background:#e53e3e;border-radius:50%;border:1.5px solid #fff"></span>` : ''}
       </button>
     </div>
 

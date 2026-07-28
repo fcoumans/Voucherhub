@@ -274,6 +274,33 @@ Source of truth for brand logos, categories, and autocomplete suggestions across
 
 ---
 
+## discovery_brands
+
+Curated catalog powering the Discover pillar — brands whose gift cards users can buy
+firsthand, browsable by category and region. Unlike `brands` (freeform, user-generated,
+autocomplete-only), this table is admin-curated: only a SELECT policy exists, scoped to
+`is_active = true`. Content is seeded/managed via migrations or direct SQL, not app code.
+
+| Field | Type | Notes |
+|---|---|---|
+| id | UUID | Primary key |
+| name | String | Unique, not null |
+| category | String | Same taxonomy as `CATEGORIES` in `src/app.js` (e.g. Food & Drink, Sustainability) |
+| regions | Text array | City-level tags, e.g. `{Ghent, Leuven, Bruges}` — a brand can span multiple cities |
+| location | String | Display string, e.g. "Ghent, Leuven & Bruges, Belgium" |
+| description | Text | Longer curated blurb (3-5 sentences), not null — deliberately longer than the AI-generated one-liners on `brands` |
+| domain | String | Used to fetch a logo via logo.dev, same pattern as `brands.domain` |
+| logo_url | String | Optional explicit override |
+| website_url | String | Not null — deep-links straight to the brand's gift-card purchase page (not their homepage) where possible; the "Visit" button on the detail page links here (opens in a new tab) |
+| fun_fact | Text | Optional short callout shown on the detail page (e.g. "gift card value never expires") — most brands won't have one |
+| sort_order | Integer | Manual curation order, default 0 |
+| is_active | Boolean | Default true — inactive rows are excluded by RLS, not just hidden client-side |
+| created_at | Timestamp | Auto-generated |
+
+Indexed on `regions` (GIN, for the region filter) and `(is_active, sort_order)`.
+
+---
+
 # Functions & Automation
 
 | Function | Type | Purpose |

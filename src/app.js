@@ -3,12 +3,20 @@ import { supabase } from './lib/supabase.js';
 /* ============================================================
    CONFIG
    ============================================================ */
-const CATEGORIES = ['Food & Drink', 'Shopping', 'Travel', 'Entertainment', 'Finance', 'Sports and Health', 'Beauty & Wellness', 'Mobility', 'Other'];
+const CATEGORIES = ['Food & Drink', 'Shopping', 'Travel', 'Entertainment', 'Finance', 'Sports and Health', 'Beauty & Wellness', 'Sustainability', 'Mobility', 'Other'];
 const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY;
 function getReferralCategories() {
   const cats = [...new Set(state.referrals.map(r => r.category).filter(c => c && c !== 'Other'))].sort();
   if (state.referrals.some(r => !r.category || r.category === 'Other')) cats.push('Other');
   return ['All', ...cats];
+}
+function getDiscoveryCategories() {
+  const cats = [...new Set(state.discoveryBrands.map(b => b.category).filter(Boolean))].sort();
+  return ['All', ...cats];
+}
+function getDiscoveryRegions() {
+  const regions = [...new Set(state.discoveryBrands.flatMap(b => b.regions || []))].sort();
+  return ['All', ...regions];
 }
 
 /* ============================================================
@@ -22,6 +30,7 @@ const state = {
   brands:     [],
   listings:   [],   // marketplace_listings rows
   referrals:  [],   // referral_codes rows
+  discoveryBrands: [], // discovery_brands rows — curated catalog for the Discover pillar
   friends:         [],   // user objects { id, name, email }
   friendIds:       [],   // UUID array for quick lookup — direct (1st-degree) friends only
   trustedNetworkIds: [], // UUID array — friends + friends of friends, for Trusted Community
@@ -38,6 +47,8 @@ const state = {
   referralCategoryFilter: 'All',  // category chip filter within the referral brand grid
   referralVotes: {},              // { [referralId]: 'up' | 'down' } — in-memory, no DB column yet
   myReferralUses: new Set(),      // referral_code ids the current user has marked "+1 used"
+  discoveryCategoryFilter: 'All',
+  discoveryRegionFilter: 'All',
 };
 
 /* ============================================================
@@ -342,6 +353,31 @@ async function fetchBrands() {
   state.brands = data || [];
 }
 
+function mapDiscoveryBrand(row) {
+  return {
+    id:          row.id,
+    name:        row.name,
+    category:    row.category,
+    regions:     row.regions || [],
+    location:    row.location || '',
+    description: row.description,
+    domain:      row.domain || null,
+    logoUrl:     row.logo_url || null,
+    websiteUrl:  row.website_url,
+    funFact:     row.fun_fact || null,
+  };
+}
+
+async function fetchDiscoveryBrands() {
+  const { data, error } = await supabase
+    .from('discovery_brands')
+    .select('id, name, category, regions, location, description, domain, logo_url, website_url, fun_fact')
+    .order('sort_order', { ascending: true })
+    .order('name', { ascending: true });
+  if (error) { console.error('fetchDiscoveryBrands error:', error); return; }
+  state.discoveryBrands = (data || []).map(mapDiscoveryBrand);
+}
+
 async function fetchListings() {
   if (!state.currentUser) return;
   const { data, error } = await supabase
@@ -622,6 +658,10 @@ async function go(view, params = {}) {
     case 'marketplace':
     case 'listing-detail':
       await Promise.all([fetchListings(), fetchFriendIds()]);
+      break;
+    case 'discover':
+    case 'discover-detail':
+      await fetchDiscoveryBrands();
       break;
     case 'referrals':
       await Promise.all([fetchFriendIds(), fetchBrands()]);
@@ -1596,6 +1636,22 @@ const avatar = (name, size = 42) => {
   return `<div class="avatar" style="background:#13B5A2;width:${size}px;height:${size}px;font-size:${Math.round(size * 0.38)}px">${esc(initial(name))}</div>`;
 };
 
+function discoveryLogoUrl(b) {
+  if (b.logoUrl) return b.logoUrl;
+  if (b.domain && LOGODEV_TOKEN) return `https://img.logo.dev/${b.domain}?token=${LOGODEV_TOKEN}`;
+  return null;
+}
+
+const discoveryAvatar = (b, size = 46) => {
+  const logoUrl = discoveryLogoUrl(b);
+  if (logoUrl) {
+    return `<div class="avatar" style="width:${size}px;height:${size}px;background:#f5f7fa;padding:3px;box-sizing:border-box;display:flex;align-items:center;justify-content:center">
+      <img src="${esc(logoUrl)}" data-brand-name="${esc(b.name)}" alt="" onerror="avatarError(this)" style="width:100%;height:100%;object-fit:contain;display:block;border-radius:4px">
+    </div>`;
+  }
+  return `<div class="avatar" style="background:#13B5A2;width:${size}px;height:${size}px;font-size:${Math.round(size * 0.38)}px">${esc(initial(b.name))}</div>`;
+};
+
 const badge = (status) =>
   `<span class="badge ${STATUS_CLASS[status] || 'badge-gray'}">${STATUS_LABEL[status] || esc(status)}</span>`;
 
@@ -1636,6 +1692,7 @@ const navIcons = {
   home:        `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>`,
   vouchers:    `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>`,
   marketplace: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/></svg>`,
+  discover:    `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>`,
   referrals:   `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>`,
   profile:     `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`,
 };
@@ -1644,7 +1701,8 @@ function renderBottomNav() {
   const pending = state.pendingRequests.length;
   const items = [
     { id: 'home', label: 'Home' },
-    { id: 'vouchers', label: 'Vouchers' },
+    { id: 'vouchers', label: 'Wallet' },
+    { id: 'discover', label: 'Discover' },
     { id: 'marketplace', label: 'Market' },
     { id: 'referrals', label: 'Referrals' },
     { id: 'profile', label: 'Profile' },
@@ -1924,7 +1982,7 @@ function viewHome() {
     ${active.length > 0 ? `
     <section class="home-section">
       <div class="section-header">
-        <h3 class="section-title">My Vouchers</h3>
+        <h3 class="section-title">My Wallet</h3>
         <button class="link-btn" data-nav="vouchers">See all</button>
       </div>
       <div class="voucher-list">
@@ -2030,12 +2088,14 @@ function viewVouchers() {
   const counts = { all: allV.length, active: 0, expiring: 0, expired: 0, used: 0, listed: 0, gifted: giftedIds.size };
   allV.forEach(v => {
     const s = getStatus(v);
-    if (s === 'active' || s === 'expiring') counts.active++;
-    else if (s in counts) counts[s]++;
+    if (s === 'active' || s === 'expiring') {
+      counts.active++;
+      if (s === 'expiring') counts.expiring++;
+    } else if (s in counts) counts[s]++;
   });
 
   return `
-  ${renderHeader('My Vouchers')}
+  ${renderHeader('Wallet')}
   <main class="content">
     <div class="search-bar">
       <span class="search-icon">${icon.search}</span>
@@ -2345,7 +2405,7 @@ function viewVoucherDetail() {
     <div class="gift-note-display">
       <div class="gift-note-display-icon">💌</div>
       ${v.giftMessage ? `<p class="gift-note-display-message">${esc(v.giftMessage)}</p>` : ''}
-      ${v.giftSender ? `<p class="gift-note-display-sender">— ${esc(v.giftSender)}</p>` : ''}
+      ${v.giftSender ? `<p class="gift-note-display-sender">From ${esc(v.giftSender)}</p>` : ''}
     </div>
     ` : ''}
 
@@ -2626,7 +2686,7 @@ function viewMarketplace() {
     ` : `
     ${myListings.length > 0
       ? myListings.map(l => listingCard(l, true)).join('')
-      : `<div class="empty-state"><div class="empty-icon">${icon.tag}</div><h3>No active listings</h3><p>Open a voucher and tap "Sell" to list it here</p><button class="btn btn-primary" data-nav="vouchers">Go to My Vouchers</button></div>`
+      : `<div class="empty-state"><div class="empty-icon">${icon.tag}</div><h3>No active listings</h3><p>Open a voucher and tap "Sell" to list it here</p><button class="btn btn-primary" data-nav="vouchers">Go to My Wallet</button></div>`
     }
     `}
   </main>
@@ -2935,6 +2995,102 @@ function viewReferralForm() {
 }
 
 /* ============================================================
+   VIEW: DISCOVER
+   ============================================================ */
+function discoveryBrandCard(b) {
+  return `
+  <div class="voucher-card" data-nav="discover-detail" data-id="${esc(b.id)}">
+    ${discoveryAvatar(b, 46)}
+    <div class="vc-info">
+      <div class="vc-brand">${esc(b.name)}</div>
+      <div class="vc-code" style="font-size:0.8rem;opacity:0.7">${esc(b.category)} · ${esc(b.regions.join(', '))}</div>
+    </div>
+    <div class="vc-right" style="color:var(--primary)">›</div>
+  </div>`;
+}
+
+function viewDiscover() {
+  const q             = state.searchQuery.toLowerCase();
+  const catFilter    = state.discoveryCategoryFilter || 'All';
+  const regionFilter = state.discoveryRegionFilter || 'All';
+
+  let list = state.discoveryBrands;
+  if (catFilter !== 'All') list = list.filter(b => b.category === catFilter);
+  if (regionFilter !== 'All') list = list.filter(b => b.regions.includes(regionFilter));
+  if (q) list = list.filter(b => b.name.toLowerCase().includes(q));
+
+  const categoryOptions = getDiscoveryCategories().map(c =>
+    `<option value="${esc(c)}" ${catFilter===c?'selected':''}>${c==='All'?'All categories':esc(c)}</option>`
+  ).join('');
+  const regionOptions = getDiscoveryRegions().map(r =>
+    `<option value="${esc(r)}" ${regionFilter===r?'selected':''}>${r==='All'?'All regions':esc(r)}</option>`
+  ).join('');
+
+  return `
+  ${renderHeader('Discover')}
+  <main class="content">
+    <p class="text-muted" style="font-size:0.875rem;margin-bottom:14px">Browse brands and buy a fresh gift card straight from the source.</p>
+    <div class="search-bar" style="margin-bottom:12px">
+      <span class="search-icon">${icon.search}</span>
+      <input type="search" placeholder="Search brand…" value="${esc(state.searchQuery)}" data-search="discover">
+    </div>
+    <div style="display:flex;gap:10px;margin-bottom:16px">
+      <select class="sort-select" style="flex:1" data-discover-cat-select>${categoryOptions}</select>
+      <select class="sort-select" style="flex:1" data-discover-region-select>${regionOptions}</select>
+    </div>
+    ${list.length > 0
+      ? `<div class="voucher-list">${list.map(discoveryBrandCard).join('')}</div>`
+      : `<div class="empty-state"><div class="empty-icon">${navIcons.discover}</div><h3>No brands match</h3><p>Try a different filter or search</p></div>`
+    }
+  </main>
+  ${renderBottomNav()}`;
+}
+
+/* ============================================================
+   VIEW: DISCOVER BRAND DETAIL
+   ============================================================ */
+function viewDiscoverDetail() {
+  const id = state.params.id;
+  const b  = state.discoveryBrands.find(x => x.id === id);
+
+  if (!b) {
+    return `
+    ${renderHeader('Discover', 'discover')}
+    <main class="content">
+      <div class="empty-state"><h3>Brand not found</h3><p>It may have been removed from the catalog</p></div>
+    </main>
+    ${renderBottomNav()}`;
+  }
+
+  return `
+  ${renderHeader(b.name, 'discover')}
+  <main class="content">
+    <div style="display:flex;align-items:center;gap:14px;margin-bottom:18px">
+      ${discoveryAvatar(b, 64)}
+      <div>
+        <div style="font-size:1.25rem;font-weight:800">${esc(b.name)}</div>
+        <div class="text-muted" style="font-size:0.875rem">${esc(b.category)}</div>
+      </div>
+    </div>
+    <div class="detail-grid">
+      <div class="detail-item">
+        <div class="detail-item-label">Category</div>
+        <div class="detail-item-value">${esc(b.category)}</div>
+      </div>
+      <div class="detail-item">
+        <div class="detail-item-label">Region</div>
+        <div class="detail-item-value">${esc(b.regions.join(', ') || 'N/A')}</div>
+      </div>
+    </div>
+    ${b.location ? `<div class="sell-hint">${icon.info} ${esc(b.location)}</div>` : ''}
+    <p style="font-size:0.9375rem;line-height:1.6;margin:16px 0">${esc(b.description)}</p>
+    ${b.funFact ? `<div class="sell-hint" style="background:var(--success-light,#DCFCE7);color:var(--success-dark,#15803D)">${icon.info} ${esc(b.funFact)}</div>` : ''}
+    <a class="btn btn-primary btn-full" style="margin-top:8px" href="${esc(b.websiteUrl)}" target="_blank" rel="noopener noreferrer">Buy Gift Card</a>
+  </main>
+  ${renderBottomNav()}`;
+}
+
+/* ============================================================
    VIEW: FRIENDS
    ============================================================ */
 function viewFriends() {
@@ -3055,7 +3211,7 @@ function viewProfile() {
     <div class="settings-list">
       <button class="settings-item" data-nav="vouchers">
         <div class="si-icon" style="background:#CFF1E8">${navIcons.vouchers.replace(/currentColor/g,'#13B5A2')}</div>
-        <div class="si-text"><div class="si-title">My Vouchers</div><div class="si-subtitle">${vouchers.length} total</div></div>
+        <div class="si-text"><div class="si-title">My Wallet</div><div class="si-subtitle">${vouchers.length} total</div></div>
       </button>
       <button class="settings-item" data-nav="marketplace" data-marketplace-tab-init="mine">
         <div class="si-icon" style="background:#CFF1E8">${navIcons.marketplace.replace(/currentColor/g,'#13B5A2')}</div>
@@ -3311,6 +3467,8 @@ const VIEWS = {
   'voucher-detail': viewVoucherDetail,
   marketplace:      viewMarketplace,
   'listing-detail': viewListingDetail,
+  discover:         viewDiscover,
+  'discover-detail': viewDiscoverDetail,
   referrals:        viewReferrals,
   'referral-form':  viewReferralForm,
   friends:          viewFriends,
@@ -3486,6 +3644,7 @@ function handleClick(e) {
 
   const refBrand = e.target.closest('[data-referral-brand]');
   if (refBrand) { state.referralBrandFilter = refBrand.dataset.referralBrand; render(); return; }
+
 
   const actionEl = e.target.closest('[data-action]');
   if (actionEl) { handleAction(actionEl, e); return; }
@@ -3776,6 +3935,12 @@ function handleChange(e) {
   const sortEl = e.target.closest('[data-sort]');
   if (sortEl) { state.activeSort = sortEl.value; render(); }
 
+  const discCatSel = e.target.closest('[data-discover-cat-select]');
+  if (discCatSel) { state.discoveryCategoryFilter = discCatSel.value; render(); return; }
+
+  const discRegionSel = e.target.closest('[data-discover-region-select]');
+  if (discRegionSel) { state.discoveryRegionFilter = discRegionSel.value; render(); return; }
+
   if (e.target.id === 'voucher-file-input') {
     const grid = document.getElementById('attachment-grid');
     const addTile = grid?.querySelector('.attachment-add');
@@ -4053,7 +4218,7 @@ function showGiftRevealAnimation(voucher) {
       <div class="gift-note-display gift-reveal-note">
         <div class="gift-note-display-icon">💌</div>
         ${voucher.giftMessage ? `<p class="gift-note-display-message">${esc(voucher.giftMessage)}</p>` : ''}
-        ${voucher.giftSender ? `<p class="gift-note-display-sender">— ${esc(voucher.giftSender)}</p>` : ''}
+        ${voucher.giftSender ? `<p class="gift-note-display-sender">From ${esc(voucher.giftSender)}</p>` : ''}
       </div>
       ` : ''}
       <h3 class="gift-reveal-caption">You received a gift!</h3>

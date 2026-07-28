@@ -999,4 +999,98 @@ CREATE INDEX IF NOT EXISTS push_notification_log_voucher_id_idx ON public.push_n
 -- REVOKE here is hygiene only, done directly on the live project as part
 -- of an auth security review (not re-declared here since this function
 -- isn't authored by this file to begin with).
+
+-- ============================================================
+-- public.discovery_brands
+-- Curated catalog for the Discover pillar: brands whose gift cards
+-- users can buy firsthand (redirect-to-website), browsable by
+-- category and region. Admin-curated content, not user-generated —
+-- only a SELECT policy is granted to authenticated users.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS public.discovery_brands (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name        TEXT NOT NULL UNIQUE,
+  category    TEXT NOT NULL,
+  regions     TEXT[] NOT NULL DEFAULT '{}',
+  location    TEXT,
+  description TEXT NOT NULL,
+  domain      TEXT,
+  logo_url    TEXT,
+  website_url TEXT NOT NULL,
+  sort_order  INT NOT NULL DEFAULT 0,
+  is_active   BOOLEAN NOT NULL DEFAULT true,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_discovery_brands_regions     ON public.discovery_brands USING GIN (regions);
+CREATE INDEX IF NOT EXISTS idx_discovery_brands_active_sort ON public.discovery_brands (is_active, sort_order);
+
+ALTER TABLE public.discovery_brands ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "discovery_brands_select" ON public.discovery_brands;
+CREATE POLICY "discovery_brands_select" ON public.discovery_brands
+  FOR SELECT TO authenticated USING (is_active = true);
+
+-- RLS policies only ever narrow rows on top of a base table grant — they
+-- never substitute for one. Every other table in this file was originally
+-- created via the Supabase dashboard, which auto-grants SELECT (and more)
+-- to authenticated as part of creating the table; this one was created via
+-- raw SQL, which does not. Omitting this left every authenticated user
+-- hitting "permission denied for table discovery_brands" (Postgres error
+-- 42501) before RLS was ever evaluated — the Discover tab rendered as
+-- permanently empty with the failure only visible in a console.error.
+GRANT SELECT ON public.discovery_brands TO authenticated;
+
+-- Optional short callout shown on the brand detail page (e.g. "gift card
+-- value never expires") — most brands won't have one.
+ALTER TABLE public.discovery_brands ADD COLUMN IF NOT EXISTS fun_fact TEXT;
+
+-- Seed content, kept idempotent (upsert on the unique `name`) so re-running
+-- this file converges to the same curated catalog rather than erroring on
+-- a second run or duplicating rows.
+INSERT INTO public.discovery_brands
+  (name, category, regions, location, description, domain, website_url, fun_fact, sort_order)
+VALUES
+(
+  'Pureto',
+  'Food & Drink',
+  ARRAY['Ghent', 'Leuven', 'Bruges'],
+  'Ghent, Leuven & Bruges, Belgium',
+  'Pureto turns a family recipe into a fast-casual meal: warm, creamy potato purée served in custom-built bowls with your choice of sauces, meat, fish or vegetable toppings. It was founded by two brothers from Ghent who reworked their mother''s recipes for a modern audience, and was named "Starter van het Jaar" (Starter of the Year) in 2025. You''ll find restaurants in Ghent, Leuven and Bruges, alongside food trucks and delivery through Deliveroo, Uber Eats and Takeaway.com. The menu covers vegetarian, halal and meat options, plus a kids'' menu and catering for private and corporate events.',
+  'pureto.be',
+  'https://pureto.be/product/cadeaubon/',
+  NULL,
+  1
+),
+(
+  'Ice Ice Amy',
+  'Food & Drink',
+  ARRAY['Ghent', 'Ostend', 'Antwerp'],
+  'Ghent, Ostend & Antwerp, Belgium',
+  'ICE ICE AMY is an artisanal ice cream brand built around small-batch, made-from-scratch flavours (think Pistachio Honey, Spiced Apple Crumble or Roasted Coffee), using natural ingredients with no artificial additives or colourings. It''s the creation of founder Amélie Cobbaert, who develops every recipe herself and serves it in fresh, daily-baked waffle cones. Scoop shops are open in Ghent (Kouter), Ostend (Langestraat) and Antwerp (Groenplaats), with vegan, lactose-free and gluten-free options available at every location. The website also runs a webshop for pickup or local delivery, plus gift cards you can send to someone else.',
+  'iceiceamy.be',
+  'https://www.iceiceamy.be/gift-card',
+  NULL,
+  2
+),
+(
+  'Planet B',
+  'Sustainability',
+  ARRAY['Ghent'],
+  'Ghent, Belgium (ships across Belgium & the Netherlands)',
+  'Planet B is a Ghent-based sustainable e-commerce platform and Certified B Corporation, built around the idea that small, everyday swaps can add up to a real environmental impact. It''s the parent brand behind WONDR (personal care and beauty) and POWR (plastic-free cleaning products, including wash strips and concentrated detergents), sold through its own webshop. Planet B reports having kept nearly 6 million plastic bottles out of circulation and donated roughly €330,000 worth of product to date. A membership option adds a discount and quarterly shopping credit for regular customers.',
+  'planetb.care',
+  'https://planetb.care/products/gift-card?variant=32604608528458',
+  'Cool fact: the gift card value never expires and can be used across multiple orders. Sustainability at its best.',
+  3
+)
+ON CONFLICT (name) DO UPDATE SET
+  category    = EXCLUDED.category,
+  regions     = EXCLUDED.regions,
+  location    = EXCLUDED.location,
+  description = EXCLUDED.description,
+  domain      = EXCLUDED.domain,
+  website_url = EXCLUDED.website_url,
+  fun_fact    = EXCLUDED.fun_fact,
+  sort_order  = EXCLUDED.sort_order;
 -- ============================================================

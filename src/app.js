@@ -3165,12 +3165,13 @@ function viewFriends() {
    ============================================================ */
 function viewProfile() {
   const u           = state.currentUser;
-  const vouchers    = state.vouchers;
-  const activeOnly  = vouchers.filter(v => getStatus(v) === 'active');
+  const giftedIds   = new Set(state.pendingGifts.map(g => g.voucher_id));
+  const vouchers    = state.vouchers.filter(v => !giftedIds.has(v.id));
   const expiring    = vouchers.filter(v => getStatus(v) === 'expiring');
+  const activeOnly  = vouchers.filter(v => getStatus(v) === 'active' || getStatus(v) === 'expiring');
   const listed      = vouchers.filter(v => getStatus(v) === 'listed');
   const giftedVouchers = state.pendingGifts
-    .map(g => vouchers.find(v => v.id === g.voucher_id))
+    .map(g => state.vouchers.find(v => v.id === g.voucher_id))
     .filter(Boolean);
   const myListings  = state.listings.filter(l => l.sellerId === u.id);
   const myReferrals = state.referrals.filter(r => r.userId === u.id);

@@ -13,6 +13,12 @@ import { nowDateTimeLocalStr, defaultReminderDateTimeStr } from '../notification
 const badge = (status) =>
   `<span class="badge ${STATUS_CLASS[status] || 'badge-gray'}">${STATUS_LABEL[status] || esc(status)}</span>`;
 
+// Small authored "×" glyph used on remove/dismiss buttons — replaces the
+// literal "✕" text character so these read as drawn icons (2px stroke,
+// round caps) consistent with the rest of the icon system, not a unicode
+// glyph standing in for one.
+const closeIcon = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
+
 /* ============================================================
    VIEW: HOME
    ============================================================ */
@@ -37,7 +43,7 @@ export function viewHome() {
         <div class="avatar" style="background:linear-gradient(150deg,#D6710A 0%,#F98513 100%);width:38px;height:38px;font-size:15px">
           ${esc(initial(state.currentUser.name))}
         </div>
-        ${state.pendingRequests.length > 0 ? `<span style="position:absolute;top:-2px;right:-2px;width:10px;height:10px;background:#e53e3e;border-radius:50%;border:1.5px solid #fff"></span>` : ''}
+        ${state.pendingRequests.length > 0 ? `<span style="position:absolute;top:-2px;right:-2px;width:10px;height:10px;background:var(--danger);border-radius:50%;border:1.5px solid #fff"></span>` : ''}
       </button>
     </div>
 
@@ -72,20 +78,20 @@ export function viewHome() {
       <h3 class="section-title">Quick Actions</h3>
       <div class="quick-actions" style="margin-top:10px">
         <button class="quick-action" data-action="add-voucher-menu">
-          <div class="qa-icon" style="background:#CFF1E8">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#13B5A2" stroke-width="2" stroke-linecap="round"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/><line x1="12" y1="14" x2="12" y2="18"/><line x1="10" y1="16" x2="14" y2="16"/></svg>
+          <div class="qa-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/><line x1="12" y1="14" x2="12" y2="18"/><line x1="10" y1="16" x2="14" y2="16"/></svg>
           </div>
           <span>Add Voucher</span>
         </button>
         <button class="quick-action" data-nav="marketplace">
-          <div class="qa-icon" style="background:#CFF1E8">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#13B5A2" stroke-width="2" stroke-linecap="round"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/></svg>
+          <div class="qa-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/></svg>
           </div>
           <span>Marketplace</span>
         </button>
         <button class="quick-action" data-nav="friends">
-          <div class="qa-icon" style="background:#CFF1E8">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#13B5A2" stroke-width="2" stroke-linecap="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+          <div class="qa-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
           </div>
           <span>Friends</span>
         </button>
@@ -226,16 +232,16 @@ export function viewVouchers() {
         ${[
           { id: 'all',      label: `All (${counts.all})` },
           { id: 'active',   label: `Active (${counts.active})` },
-          { id: 'expiring', label: `⚠ Expiring (${counts.expiring})` },
+          { id: 'expiring', label: `Expiring (${counts.expiring})` },
           { id: 'expired',  label: `Expired (${counts.expired})` },
           { id: 'used',     label: `Used (${counts.used})` },
           { id: 'listed',   label: `Listed (${counts.listed})` },
-          { id: 'gifted',   label: `🎁 Gifted (${counts.gifted})` },
+          { id: 'gifted',   label: `Gifted (${counts.gifted})` },
         ].map(f => `<button class="chip ${filter === f.id ? 'active' : ''}" data-filter="${f.id}">${f.label}</button>`).join('')}
       </div>
       <select class="sort-select" data-sort title="Sort">
-        <option value="expiry" ${sort==='expiry'?'selected':''}>↑ Expiry</option>
-        <option value="value"  ${sort==='value'?'selected':''}>↓ Value</option>
+        <option value="expiry" ${sort==='expiry'?'selected':''}>Soonest expiry</option>
+        <option value="value"  ${sort==='value'?'selected':''}>Highest value</option>
         <option value="added"  ${sort==='added'?'selected':''}>Newest</option>
       </select>
     </div>
@@ -268,7 +274,7 @@ export function attachmentTileHtml({ existingId, localId, path, kind, previewUrl
   return `
   <div class="attachment-tile">
     ${body}
-    <button type="button" class="attachment-remove" ${removeAttr} title="Remove">✕</button>
+    <button type="button" class="attachment-remove" ${removeAttr} title="Remove">${closeIcon}</button>
   </div>`;
 }
 
@@ -276,7 +282,7 @@ export function barcodeTileHtml({ path, previewUrl }) {
   return `
   <div class="barcode-tile">
     <img class="barcode-thumb" ${previewUrl ? `src="${esc(previewUrl)}"` : `data-path="${esc(path)}"`} alt="Barcode">
-    <button type="button" class="attachment-remove" data-action="remove-barcode" title="Remove">✕</button>
+    <button type="button" class="attachment-remove" data-action="remove-barcode" title="Remove">${closeIcon}</button>
   </div>`;
 }
 
@@ -287,7 +293,7 @@ export function barcodePreviewHtml(v) {
   if (voucherFormState.pendingBarcode) return barcodeTileHtml({ previewUrl: voucherFormState.pendingBarcode.previewUrl });
   if (v?.barcodePath && !voucherFormState.barcodeRemoved) return barcodeTileHtml({ path: v.barcodePath });
   if (voucherFormState.barcodeScanState === 'scanning') return `<div class="barcode-scanning"><div class="scan-spinner-sm"></div><span>Scanning for a QR code…</span></div>`;
-  if (voucherFormState.barcodeScanState === 'missing') return `<p class="barcode-not-found">No QR code found in this photo.</p>`;
+  if (voucherFormState.barcodeScanState === 'missing') return `<div class="barcode-not-found">${icon.info}<span>No QR code found in this photo — you can still add the code below by hand.</span></div>`;
   return '';
 }
 
@@ -303,7 +309,7 @@ export function barcodeGroupVisible(v) {
 function valueFieldsHtml(v) {
   const mode = v?.valueDescription ? 'description' : 'amount';
   return `
-  <div class="form-group">
+  <div class="form-group" style="margin-bottom:8px">
     <label>Value <span style="color:var(--danger)">*</span></label>
     <div class="value-mode-toggle">
       <button type="button" class="value-mode-btn ${mode === 'amount' ? 'active' : ''}" data-action="set-value-mode" data-mode="amount">€ Amount</button>
@@ -336,7 +342,7 @@ function giftNoteFieldsHtml(v) {
     <div class="gift-note-card" id="gift-note-fields" ${hasNote ? '' : 'style="display:none"'}>
       <div class="gift-note-card-header">
         <span>💌 A personal note</span>
-        <button type="button" class="gift-note-remove" data-action="remove-gift-note" title="Remove note">✕</button>
+        <button type="button" class="gift-note-remove" data-action="remove-gift-note" title="Remove note">${closeIcon}</button>
       </div>
       <textarea name="giftMessage" class="gift-note-textarea" placeholder="Happy Birthday! Enjoy 🎉" rows="3" maxlength="500">${esc(v?.giftMessage||'')}</textarea>
       <input type="text" name="giftSender" class="gift-note-sender" placeholder="From… (e.g. Mom, Sarah &amp; Tom)" value="${esc(v?.giftSender||'')}" maxlength="100">
@@ -390,7 +396,7 @@ export function viewVoucherForm() {
         <span class="form-hint">Fill in only when a partial amount has already been used</span>
       </div>
 
-      <div class="form-group">
+      <div class="form-group" style="margin-top:8px">
         <label>Expiry Date</label>
         <div class="date-field-row">
           <input type="date" name="expiryDate" id="voucher-expiry-input" value="${esc(v?.expiryDate||'')}">
@@ -399,7 +405,7 @@ export function viewVoucherForm() {
         <span class="form-hint">Leave blank if this voucher doesn't expire</span>
       </div>
 
-      <div class="form-group">
+      <div class="form-group" style="margin-top:8px;margin-bottom:8px">
         <label>Voucher Code</label>
         <input type="text" name="code" placeholder="e.g. SUMMER2024" value="${esc(v?.code||'')}">
         <span class="form-hint">The code you enter at checkout</span>
@@ -410,29 +416,32 @@ export function viewVoucherForm() {
         <input type="text" name="pin" placeholder="Optional PIN or security code" value="${esc(v?.pin||'')}">
       </div>
 
-      <div class="form-group">
+      <div class="form-group" style="margin-top:8px">
         <label>Notes / Terms &amp; Conditions</label>
         <textarea name="notes" placeholder="Any extra info, or the voucher's terms &amp; conditions…" rows="3">${esc(v?.notes||'')}</textarea>
       </div>
 
-      ${giftNoteFieldsHtml(v)}
-
-      <div class="form-group">
-        <label>Category</label>
-        <select name="category">
-          ${CATEGORIES.map(c => `<option value="${c}" ${(v?.category||'Other')===c?'selected':''}>${c}</option>`).join('')}
-        </select>
+      <div style="margin-top:12px">
+        ${giftNoteFieldsHtml(v)}
       </div>
 
-      <div class="form-group">
-        <label>Voucher Type</label>
-        <select name="voucherType">
-          <option value="gift_card" ${(v?.voucherType||'gift_card')==='gift_card'?'selected':''}>Gift Card</option>
-          <option value="store_credit" ${v?.voucherType==='store_credit'?'selected':''}>Store Credit</option>
-        </select>
+      <div style="display:flex;gap:10px;margin-top:8px">
+        <div class="form-group" style="flex:1;margin-bottom:0">
+          <label>Category</label>
+          <select name="category">
+            ${CATEGORIES.map(c => `<option value="${c}" ${(v?.category||'Other')===c?'selected':''}>${c}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group" style="flex:1;margin-bottom:0">
+          <label>Voucher Type</label>
+          <select name="voucherType">
+            <option value="gift_card" ${(v?.voucherType||'gift_card')==='gift_card'?'selected':''}>Gift Card</option>
+            <option value="store_credit" ${v?.voucherType==='store_credit'?'selected':''}>Store Credit</option>
+          </select>
+        </div>
       </div>
 
-      <div style="display:flex;gap:10px;margin-top:4px">
+      <div style="display:flex;gap:10px;margin-top:24px">
         <button type="button" class="btn btn-ghost btn-full" data-nav="${id ? 'voucher-detail' : 'vouchers'}" ${id ? `data-id="${esc(id)}"` : ''}>Cancel</button>
         <button type="submit" class="btn btn-primary btn-full">${v ? 'Save Changes' : 'Add Voucher'}</button>
       </div>
@@ -473,10 +482,10 @@ export function viewVoucherDetail() {
   return `
   ${renderHeader(v.brand, 'vouchers', {}, rightAction)}
   <main class="content">
-    <div class="voucher-detail-header" style="background:#13B5A2">
+    <div class="voucher-detail-header">
       <div class="vd-brand">${esc(v.brand)}</div>
       <div class="vd-value${v.valueDescription ? ' vd-value-text' : ''}">${formatVoucherValue(v, v.balance != null ? v.balance : v.value)}</div>
-      ${badge(s)}
+      <div class="vd-status">${badge(s)}</div>
     </div>
 
     ${v.giftMessage || v.giftSender ? `
@@ -497,7 +506,7 @@ export function viewVoucherDetail() {
     <div class="reminder-info-bar">
       ${icon.bell}
       <span>Reminder set for <strong>${formatDate(activeReminder.reminderDate)}</strong>${activeReminder.reminderTime ? ` at ${activeReminder.reminderTime}` : ''}</span>
-      <button class="btn-icon" data-action="dismiss-reminder" data-id="${esc(activeReminder.id)}" title="Remove reminder" style="margin-left:auto;opacity:0.6;font-size:0.75rem">✕</button>
+      <button class="btn-icon" data-action="dismiss-reminder" data-id="${esc(activeReminder.id)}" title="Remove reminder" style="margin-left:auto;opacity:0.6">${closeIcon}</button>
     </div>
     ` : ''}
 
@@ -546,11 +555,11 @@ export function viewVoucherDetail() {
       ` : `
       <div class="detail-item">
         <div class="detail-item-label">Original Value</div>
-        <div class="detail-item-value">${formatCurrency(v.value, v.currency)}</div>
+        <div class="detail-item-value detail-item-value-money">${formatCurrency(v.value, v.currency)}</div>
       </div>
       <div class="detail-item">
         <div class="detail-item-label">Remaining Balance</div>
-        <div class="detail-item-value">${v.balance != null ? formatCurrency(v.balance, v.currency) : formatCurrency(v.value, v.currency)}</div>
+        <div class="detail-item-value detail-item-value-money">${v.balance != null ? formatCurrency(v.balance, v.currency) : formatCurrency(v.value, v.currency)}</div>
       </div>
       `}
       <div class="detail-item">
@@ -624,11 +633,10 @@ export function viewVoucherDetail() {
       <form id="form-reminder">
         <input type="hidden" name="voucherId" value="${esc(id)}">
         <div class="form-group" style="margin-bottom:8px">
-          <label style="font-size:0.8125rem;font-weight:600;margin-bottom:6px;display:block">When should we remind you?</label>
+          <label>When should we remind you?</label>
           <input type="datetime-local" name="reminderDateTime" required
             min="${nowDateTimeLocalStr()}"
-            value="${defaultReminderDateTimeStr()}"
-            style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;font-size:0.9375rem;background:var(--bg);color:var(--text)">
+            value="${defaultReminderDateTimeStr()}">
         </div>
         <p class="form-hint" style="margin-bottom:12px;font-size:0.75rem">
           ${icon.bell} Push notification at this time${v.expiryDate ? ` · Expires ${formatDate(v.expiryDate)}` : ''}

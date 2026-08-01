@@ -34,7 +34,7 @@ export function brandAutocomplete(currentValue = '') {
   return `
   <div style="position:relative">
     <input type="text" name="brand" data-brand-ac placeholder="Search or type a brand…" value="${esc(currentValue)}" required autocomplete="off" style="width:100%">
-    <div id="brand-suggestions" style="display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;background:var(--bg,#fff);border:1.5px solid var(--border,#e2e8f0);border-radius:10px;max-height:220px;overflow-y:auto;z-index:200;box-shadow:0 4px 20px rgba(34,51,130,0.12)"></div>
+    <div id="brand-suggestions" style="display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;background:var(--surface,#fff);border:1.5px solid var(--border,rgba(17,35,63,0.08));border-radius:10px;max-height:220px;overflow-y:auto;z-index:200;box-shadow:0 4px 20px rgba(19,181,162,0.12)"></div>
   </div>`;
 }
 
@@ -81,6 +81,8 @@ export const icon = {
   camera: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>`,
   file:   `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>`,
   gift:   `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5"/><line x1="12" y1="22" x2="12" y2="7"/><path d="M12 7H7.5a2.5 2.5 0 010-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 000-5C13 2 12 7 12 7z"/></svg>`,
+  thumbsUp:   `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 9V5a3 3 0 00-3-3l-4 9v11h11.28a2 2 0 002-1.7l1.38-9a2 2 0 00-2-2.3z"/><path d="M7 22H4a2 2 0 01-2-2v-7a2 2 0 012-2h3"/></svg>`,
+  thumbsDown: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 15v4a3 3 0 003 3l4-9V2H5.72a2 2 0 00-2 1.7l-1.38 9a2 2 0 002 2.3z"/><path d="M17 2h3a2 2 0 012 2v7a2 2 0 01-2 2h-3"/></svg>`,
 };
 
 export const navIcons = {

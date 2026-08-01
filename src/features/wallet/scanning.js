@@ -394,15 +394,14 @@ export function showAddVoucherMenu() {
     </div>
     <input type="file" id="menu-file-input" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,application/pdf" multiple style="display:none">
   </div>`;
-  document.body.appendChild(overlay);
-  mountOverlay(overlay);
-
   const staged = []; // [{ file, mimeType, previewUrl }]
 
   const closeMenu = () => {
     staged.forEach(s => s.previewUrl && URL.revokeObjectURL(s.previewUrl));
     closeOverlay(overlay);
   };
+  if (!mountOverlay(overlay, closeMenu)) return;
+
   overlay.addEventListener('click', e => { if (e.target === overlay) closeMenu(); });
   overlay.querySelector('#menu-manual-entry').addEventListener('click', () => { closeMenu(); go('voucher-form'); });
   overlay.querySelector('#menu-staging-cancel').addEventListener('click', closeMenu);
@@ -416,7 +415,7 @@ export function showAddVoucherMenu() {
         ${s.mimeType === 'application/pdf'
           ? `<div class="attachment-file-icon">${icon.file}<span>PDF</span></div>`
           : `<img class="attachment-thumb" src="${esc(s.previewUrl)}" alt="Photo ${i + 1}">`}
-        <button type="button" class="attachment-remove" data-staged-idx="${i}" title="Remove">✕</button>
+        <button type="button" class="attachment-remove" data-staged-idx="${i}" title="Remove"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
       </div>`).join('');
     overlay.querySelector('#menu-scan-btn').textContent = staged.length > 1 ? `Scan ${staged.length} Photos` : 'Scan';
     overlay.querySelector('#menu-initial').style.display = staged.length ? 'none' : '';

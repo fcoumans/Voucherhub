@@ -14,15 +14,16 @@ export function viewPendingGifts() {
     if (!v) return '';
     return `
     <div class="card" style="margin-bottom:10px;padding:14px">
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
-        <div>
+      <div style="display:flex;align-items:center;gap:12px">
+        <div class="si-icon" style="background:var(--primary-light);color:var(--primary-dark);flex-shrink:0">${icon.gift}</div>
+        <div style="flex:1;min-width:0">
           <div style="font-weight:700">${esc(v.brand)}</div>
           <div class="text-muted text-xs">${formatCurrency(v.value, v.currency, false)} · sent ${formatDate(g.created_at?.slice(0, 10))}</div>
         </div>
-        <div style="display:flex;gap:8px">
-          <button type="button" class="btn btn-secondary btn-sm" data-action="show-gift-qr" data-id="${esc(g.id)}" data-voucher-id="${esc(v.id)}">${icon.link} Link</button>
-          <button type="button" class="btn btn-ghost btn-sm" data-action="cancel-gift" data-id="${esc(g.id)}">${icon.trash} Cancel</button>
-        </div>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:12px">
+        <button type="button" class="btn btn-secondary btn-sm btn-full" data-action="show-gift-qr" data-id="${esc(g.id)}" data-voucher-id="${esc(v.id)}">${icon.link} Link</button>
+        <button type="button" class="btn btn-ghost btn-sm btn-full" data-action="cancel-gift" data-id="${esc(g.id)}">${icon.trash} Cancel</button>
       </div>
     </div>`;
   }).join('');
@@ -55,7 +56,7 @@ export function viewFriends() {
         <label>Send Friend Request</label>
         <div style="display:flex;gap:8px">
           <input type="email" name="email" placeholder="friend@example.com" style="flex:1;padding:11px 14px;border:1.5px solid var(--border);border-radius:10px;font-size:0.9375rem;outline:none">
-          <button type="submit" class="btn btn-primary">${icon.plus2} Send</button>
+          <button type="submit" class="btn btn-primary">${icon.plus2} Follow</button>
         </div>
         <span class="form-hint">They must have a VoucherWise account. They will need to accept your request.</span>
         <div id="friend-error" class="error-msg" style="display:none;margin-top:8px"></div>

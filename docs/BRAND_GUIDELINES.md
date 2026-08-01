@@ -6,7 +6,7 @@ Voucher Hub is the trusted place to manage voucher value.
 
 Most voucher products feel promotional, cluttered, or focused on discounts. Voucher Hub should feel different.
 
-Voucher Hub is a financial utility.
+Voucher Hub is a financial utility with warmth.
 
 The product helps users:
 
@@ -16,7 +16,7 @@ The product helps users:
 * Discover referral opportunities
 * Make smarter spending decisions
 
-The brand should feel closer to a digital wallet or fintech product than a coupon platform.
+The brand should feel like a premium consumer wallet — trustworthy like a fintech product, but warmer and friendlier than one.
 
 Comparable products:
 
@@ -24,12 +24,12 @@ Comparable products:
 * Monzo
 * Notion
 * TicketSwap
-* Linear
+* Cleo / Copilot Money (for the warmth + polish, not the blue austerity)
 
 Not comparable:
 
 * Groupon
-* RetailMeNot
+* RetailMeRot
 * CouponBirds
 * Generic discount websites
 
@@ -80,14 +80,13 @@ If Voucher Hub were a person:
 * Financially responsible
 * Organized
 * Helpful
-* Calm
+* Calm, with warmth
 * Professional
 
 Not:
 
-* Playful
 * Loud
-* Trendy
+* Trendy for trend's sake
 * Gamified
 * Sales-driven
 
@@ -128,18 +127,24 @@ Every component should have a purpose.
 
 Remove elements that do not improve usability.
 
+The one exception is the liquid-glass surface treatment (see Surface System below) — it's decorative, but it's a single, consistently-applied material choice, not one-off flourishes.
+
 ---
 
-## Calm interfaces
+## Calm interfaces, applied with warmth
 
 The user should feel in control.
 
 Avoid:
 
-* Excessive animations
-* Bright gradients
 * Visual noise
 * Competing focal points
+* Motion without a purpose (see [[emil-design-eng]] / the animation audit for the house motion rules — every animation on screen should answer "why does this animate?")
+
+Allowed, used deliberately and sparingly:
+
+* The liquid-glass sheen on cards (one consistent treatment, not novelty)
+* Subtle celebratory moments (e.g. the gift-reveal confetti) — rare, first-time/occasional occurrences only, never on frequently-seen UI
 
 ---
 
@@ -147,68 +152,65 @@ Avoid:
 
 ## Primary Brand Color
 
-Deep Space Royal
+Emerald Sea
 
 ```css
-#223382
+#13B5A2
 ```
 
 Purpose:
 
-* Navigation
+* Navigation (active state)
 * Primary buttons
 * Links
 * Active states
 * Brand identity
 
+Variants:
+
+```css
+--primary-light: #CFF1E8;  /* chip/badge backgrounds, tinted surfaces */
+--primary-dark:  #0E9488;  /* hover states, emphasized primary text */
+```
+
 Psychology:
 
-* Trust
-* Reliability
-* Stability
+* Freshness
+* Value
+* Growth
 
 ---
 
 ## Secondary Color
 
-Aster Flower Blue
+Slate Mist
 
 ```css
-#9BACD8
+#9AA6B2
 ```
 
 Purpose:
 
-* Secondary buttons
-* Selected states
-* Background accents
-* Supporting UI
-
-Psychology:
-
-* Calm
-* Organization
-* Clarity
+* Muted icons and supporting UI
+* Neutral emphasis where full brand color would be too strong
 
 ---
 
 ## Accent Color
 
-Habanero
+Coral
 
 ```css
-#F98513
+#FF7A59
 ```
 
 Purpose:
 
-* Discounts
-* Marketplace opportunities
-* Important actions
+* The one field that's about a feeling, not data entry (e.g. the gift note)
+* Highlights, hints
+* Warm emphasis
 
-Use sparingly.
-
-The accent color should attract attention only when needed.
+Use sparingly. The accent should attract attention only when needed.
 
 ---
 
@@ -217,7 +219,7 @@ The accent color should attract attention only when needed.
 Luster White
 
 ```css
-#F4F1EC
+#F4F1E8
 ```
 
 Purpose:
@@ -225,23 +227,23 @@ Purpose:
 * Application background
 * Large content areas
 
-Avoid pure white backgrounds whenever possible.
+Avoid pure white backgrounds whenever possible — the warm off-white keeps the interface from feeling clinical.
 
 ---
 
 ## Dark Color
 
-Deadly Depths
+Deep Navy
 
 ```css
-#111144
+#11233F
 ```
 
 Purpose:
 
 * Headings
-* Dark mode
-* Premium sections
+* Primary text
+* Premium/dark sections (e.g. the home screen stats card)
 
 ---
 
@@ -250,8 +252,10 @@ Purpose:
 ## Success
 
 ```css
-#16A34A
+#16A06B
 ```
+
+Light tint: `#D1FAF0`
 
 Used for:
 
@@ -265,13 +269,17 @@ Used for:
 ## Warning
 
 ```css
-#F98513
+#E5562F
 ```
+
+Light tint: `#FFE7DF`
 
 Used for:
 
 * Expiring soon
 * Important reminders
+
+Distinct from the Coral accent — Warning is a more saturated red-orange, reserved for things that need attention, while Coral is the softer "warmth" color used for feeling-driven moments.
 
 ---
 
@@ -281,31 +289,33 @@ Used for:
 #DC2626
 ```
 
+Light tint: `#FEE2E2`
+
 Used for:
 
 * Validation errors
 * Failed actions
 
 ---
-# Gradient & Lighting System
+
+# Surface System (Liquid Glass)
 
 ## Philosophy
 
-Voucher Hub does not use gradients as decoration.
+Voucher Hub's cards use a "liquid glass" treatment: a translucent, blurred surface with a diagonal white-to-cream sheen. This is what makes the interface feel premium and tactile rather than flat.
 
-Gradients are used as a lighting system that creates depth, focus, and calmness.
+The glass effect is deliberate and consistent — every content card (voucher cards, listing cards, quick actions, KPI cards, the settings list) uses the same recipe, so it reads as one material system, not a decorative accident.
 
-The user should notice the content first and the gradient second.
+```css
+background: linear-gradient(135deg, rgba(255, 255, 255, 0.8) 0%, rgba(244, 241, 232, 0.35) 100%);
+backdrop-filter: blur(20px) saturate(180%);
+border: 1px solid rgba(255, 255, 255, 0.4);
+box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7), 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
+```
 
-The effect should feel architectural, premium, and trustworthy rather than creative or artistic.
+The `saturate(180%)` is what reads as "glass" instead of "milky" — don't drop it when reusing the recipe.
 
-Comparable implementations:
-
-* Linear
-* Stripe
-* Monzo
-* Notion Calendar
-* Modern Apple interfaces
+The home screen's stats card is the one dark exception: a high-opacity navy-dominant glass (`rgba(15, 31, 58, 0.98)` → `rgba(28, 51, 84, 0.92)`), so the page background can't wash out the blue while still keeping the same blur/saturate richness.
 
 ---
 
@@ -313,199 +323,41 @@ Comparable implementations:
 
 The interface should never feel flat.
 
-However, depth should be achieved through subtle atmospheric lighting rather than heavy shadows or decorative effects.
-
-Gradients exist to:
-
-* Guide attention
-* Create visual hierarchy
-* Add warmth
-* Reduce the harshness of pure white interfaces
-
----
-
-## Primary Background Gradient
-
-Inspired by the Luster White visual system.
-
-Base colors:
-
-```css
-#FFFFFF
-#F8F6F3
-#F4F1EC
-```
-
-Example:
-
-```css
-background: linear-gradient(
-  180deg,
-  #FFFFFF 0%,
-  #F8F6F3 50%,
-  #F4F1EC 100%
-);
-```
-
-Purpose:
-
-* Home screen
-* Onboarding
-* Empty states
-* Marketing pages
-* Large background areas
-
-Never use this gradient on cards, buttons, or important UI controls.
-
----
-
-## Ambient Orange Glow
-
-Voucher Hub uses a subtle orange glow derived from Habanero.
-
-The glow represents:
-
-* Value
-* Opportunity
-* Savings
-* Stored purchasing power
-
-Base color:
-
-```css
-#F98513
-```
-
-Example:
-
-```css
-background:
-radial-gradient(
-  circle at bottom center,
-  rgba(249,133,19,0.12) 0%,
-  rgba(249,133,19,0) 70%
-);
-```
-
-Rules:
-
-* Opacity between 5% and 15%
-* Large radius
-* Extremely soft transitions
-* Never visible as a circle
-* Never used behind text
-
-The user should feel warmth without consciously noticing orange.
-
----
-
-## Blue Atmospheric Lighting
-
-For premium sections, onboarding, or dark mode.
-
-Base colors:
-
-```css
-#223382
-#9BACD8
-```
-
-Example:
-
-```css
-background:
-linear-gradient(
-  180deg,
-  #223382 0%,
-  #2D3E91 40%,
-  #9BACD8 100%
-);
-```
-
-Use sparingly.
-
-Suitable for:
-
-* Hero sections
-* Authentication screens
-* Premium experiences
-
-Not suitable for:
-
-* Forms
-* Dashboard screens
-* Data-heavy views
-
----
-
-## Surface Hierarchy
-
-The interface should follow a layered approach.
-
-### Layer 1: Atmosphere
-
-Background gradients and ambient lighting.
-
-### Layer 2: Content Surface
-
-Cards and containers.
-
-### Layer 3: Information
-
-Voucher data, marketplace listings, referral codes.
-
-### Layer 4: Actions
-
-Buttons, inputs, and navigation.
-
-The atmosphere should never compete with the information layer.
+Depth comes from the glass surfaces themselves plus soft, warm-tinted shadows — not from harsh drop shadows or heavy borders.
 
 ---
 
 ## Card Rules
 
-Cards must remain clean and readable.
+Cards must remain clean and readable despite the glass treatment — content legibility always wins over the effect.
 
-Cards use:
-
-```css
-background: #FFFFFF;
-```
-
-Optional:
-
-```css
-border: 1px solid rgba(34,51,130,0.06);
-```
+Cards use the liquid-glass recipe above. Status is communicated with a colored left border (`border-left`), not by changing the card's own fill color, so the glass stays consistent across every state.
 
 Avoid:
 
-* Gradient cards
-* Colorful cards
-* Heavy shadows
-* Glassmorphism
+* Heavy, un-tinted black shadows
+* Breaking the glass recipe per-component (always reuse the shared classes/tokens)
+* Applying glass to functional controls where it would hurt legibility (inputs, form fields — those stay flat `--surface` white)
 
-Cards contain information.
-
-Backgrounds create atmosphere.
+Cards contain information. The glass surface creates atmosphere around it.
 
 ---
 
 ## Trust Rule
 
-Blue communicates trust.
+Teal communicates freshness and value.
 
-White communicates clarity.
+White/cream communicates clarity and calm.
 
-Orange communicates opportunity.
+Coral communicates warmth and feeling.
 
 The balance should be:
 
-* 80% clarity
-* 15% trust
-* 5% opportunity
+* 75% clarity (white/cream + glass)
+* 20% teal (trust, brand, navigation)
+* 5% coral (warmth, used sparingly)
 
-If the orange becomes a dominant visual element, it is being overused.
+If coral becomes a dominant visual element, it is being overused.
 
 ---
 
@@ -513,39 +365,34 @@ If the orange becomes a dominant visual element, it is being overused.
 
 When generating screens:
 
-* Use gradients only in background layers.
-* Keep gradients extremely subtle.
-* Never use gradients on buttons.
-* Never use gradients on typography.
-* Never use gradients inside cards.
-* Never use gradients to replace hierarchy.
-* Prefer spacing and typography over visual effects.
+* Reuse the shared liquid-glass card recipe — don't invent a new glass formula per component.
+* Keep the diagonal sheen direction (135deg) consistent everywhere it's used.
+* Status/emphasis lives in the left border accent, not in swapping the glass tint.
+* Prefer the existing motion tokens (`--ease-out`, `--ease-in-out`, `--ease-drawer`) and the animation rules in [[emil-design-eng]] over inventing new easing/durations.
+* Prefer spacing and typography over adding new visual effects — the glass system is the one "effect" this product allows; don't stack more on top of it.
 
 Target feeling:
 
-"Professional financial software with warmth."
+"A premium, warm financial wallet — polished like a fintech app, but approachable."
 
 Not:
 
 * Crypto app
 * Coupon website
 * Marketing landing page
-* AI-generated startup aesthetic
+* Cold, clinical enterprise dashboard
 
-The design should feel durable, trustworthy, and capable of handling financial value.
-
+---
 
 # Typography
 
 ## Style
 
-Use modern sans-serif typography.
+System-native sans-serif stack — no webfont loading cost, renders instantly, and reads as clean on every platform:
 
-Recommended:
-
-* Inter
-* SF Pro
-* Geist
+```css
+font-family: Arial, 'Helvetica Neue', 'Segoe UI', sans-serif;
+```
 
 ---
 
@@ -553,7 +400,7 @@ Recommended:
 
 ### Heading
 
-Bold
+Bold (700–800), tight letter-spacing (`-0.01em` to `-0.02em`)
 
 Used for:
 
@@ -571,7 +418,7 @@ Used for:
 
 ### Labels
 
-Medium
+Medium (600–700)
 
 Used for:
 
@@ -586,15 +433,20 @@ Used for:
 
 Primary Button
 
-* Deep Space Royal background
+* Emerald Sea (`--primary`) background
 * White text
+* `--primary-dark` on hover
 
 Secondary Button
 
 * White background
-* Deep Space Royal border
+* Emerald Sea border and text
 
-Tertiary Button
+Ghost Button
+
+* `--gray-light` background, no border
+
+Tertiary / Link Button
 
 * Text only
 
@@ -602,20 +454,21 @@ Tertiary Button
 
 ## Cards
 
-Cards should be used extensively.
+Cards should be used extensively, always via the shared liquid-glass recipe (see Surface System above).
 
 Examples:
 
 * Voucher cards
 * Marketplace listings
-* Referral codes
+* Quick actions / KPI cards
+* Settings list
 
 Rules:
 
-* White background
-* Subtle shadow
+* Liquid-glass background (never flat white for content cards)
 * Rounded corners
 * Consistent spacing
+* Status communicated via colored left border, not fill color
 
 ---
 
@@ -624,10 +477,12 @@ Rules:
 Bottom navigation with:
 
 1. Home
-2. My Vouchers
-3. Marketplace
-4. Referral Codes
-5. Profile
+2. Discover
+3. Wallet (centered)
+4. Marketplace
+5. Referrals
+
+Profile is reached via the Home screen avatar, not the bottom nav.
 
 Navigation should always remain predictable.
 
@@ -677,6 +532,8 @@ Warn users before:
 * Marking vouchers as used
 * Removing referral codes
 
+Use the shared bottom-sheet confirm dialog (`showConfirm()`), not `window.confirm()` or a silent action.
+
 ---
 
 # Mobile Design Rules
@@ -720,26 +577,25 @@ whenever possible.
 
 Do not use:
 
-* Glassmorphism
-* Excessive gradients
 * Neumorphism
-* Heavy shadows
 * Overly playful illustrations
 * Cryptocurrency-style aesthetics
 * Generic AI-generated design trends
+* More than one accent color competing for attention
+* Glass effects on functional form controls (inputs stay flat)
 
-The product should feel durable and trustworthy.
+The product should feel durable and trustworthy, with just enough warmth to not feel like a bank.
 
 ---
 
 # Design North Star
 
-Voucher Hub should feel like a trusted financial wallet for voucher value.
+Voucher Hub should feel like a trusted, premium wallet for voucher value — polished enough to trust with something valuable, warm enough to actually enjoy using.
 
 Every design decision should reinforce:
 
 * Trust
 * Clarity
 * Organization
-* Simplicity
+* Warmth
 * Value preservation

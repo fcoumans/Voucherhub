@@ -11,6 +11,10 @@ function discoveryLogoUrl(b) {
   return null;
 }
 
+function hostnameOf(url) {
+  try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return null; }
+}
+
 const discoveryAvatar = (b, size = 46) => {
   const logoUrl = discoveryLogoUrl(b);
   if (logoUrl) {
@@ -30,9 +34,9 @@ function discoveryBrandCard(b) {
     ${discoveryAvatar(b, 46)}
     <div class="vc-info">
       <div class="vc-brand">${esc(b.name)}</div>
-      <div class="vc-code" style="font-size:0.8rem;opacity:0.7">${esc(b.category)} · ${esc(b.regions.join(', '))}</div>
+      <div style="font-size:0.8125rem;color:var(--text-muted)">${esc(b.category)} · ${esc(b.regions.join(', '))}</div>
     </div>
-    <div class="vc-right" style="color:var(--primary)">›</div>
+    <div class="vc-right" style="color:var(--secondary);display:flex;transform:scaleX(-1)">${icon.back}</div>
   </div>`;
 }
 
@@ -67,7 +71,11 @@ export function viewDiscover() {
     </div>
     ${list.length > 0
       ? `<div class="voucher-list">${list.map(discoveryBrandCard).join('')}</div>`
-      : `<div class="empty-state"><div class="empty-icon">${navIcons.discover}</div><h3>No brands match</h3><p>Try a different filter or search</p></div>`
+      : `<div class="empty-state">
+           <div class="empty-icon">${navIcons.discover}</div>
+           <h3>No brands match</h3>
+           <p>${q || catFilter !== 'All' || regionFilter !== 'All' ? 'Try a different search term or filter' : 'Check back soon — new brands are added regularly'}</p>
+         </div>`
     }
   </main>
   ${renderBottomNav()}`;
@@ -79,12 +87,18 @@ export function viewDiscover() {
 export function viewDiscoverDetail() {
   const id = state.params.id;
   const b  = state.discoveryBrands.find(x => x.id === id);
+  const hostname = b ? hostnameOf(b.websiteUrl) : null;
 
   if (!b) {
     return `
     ${renderHeader('Discover', 'discover')}
     <main class="content">
-      <div class="empty-state"><h3>Brand not found</h3><p>It may have been removed from the catalog</p></div>
+      <div class="empty-state">
+        <div class="empty-icon">${navIcons.discover}</div>
+        <h3>Brand not found</h3>
+        <p>It may have been removed from the catalog</p>
+        <button class="btn btn-primary" data-nav="discover">Back to Discover</button>
+      </div>
     </main>
     ${renderBottomNav()}`;
   }
@@ -95,7 +109,7 @@ export function viewDiscoverDetail() {
     <div style="display:flex;align-items:center;gap:14px;margin-bottom:18px">
       ${discoveryAvatar(b, 64)}
       <div>
-        <div style="font-size:1.25rem;font-weight:800">${esc(b.name)}</div>
+        <div style="font-family:var(--font-display);font-size:1.25rem;font-weight:800;letter-spacing:-0.01em">${esc(b.name)}</div>
         <div class="text-muted" style="font-size:0.875rem">${esc(b.category)}</div>
       </div>
     </div>
@@ -111,8 +125,9 @@ export function viewDiscoverDetail() {
     </div>
     ${b.location ? `<div class="sell-hint">${icon.info} ${esc(b.location)}</div>` : ''}
     <p style="font-size:0.9375rem;line-height:1.6;margin:16px 0">${esc(b.description)}</p>
-    ${b.funFact ? `<div class="sell-hint" style="background:var(--success-light,#DCFCE7);color:var(--success-dark,#15803D)">${icon.info} ${esc(b.funFact)}</div>` : ''}
-    <a class="btn btn-primary btn-full" style="margin-top:8px" href="${esc(b.websiteUrl)}" target="_blank" rel="noopener noreferrer">Buy Gift Card</a>
+    ${b.funFact ? `<div class="sell-hint" style="background:var(--success-light);color:var(--text)">${icon.info} ${esc(b.funFact)}</div>` : ''}
+    <a class="btn btn-primary btn-full" style="margin-top:8px;display:flex" href="${esc(b.websiteUrl)}" target="_blank" rel="noopener noreferrer">${icon.link} Buy Gift Card</a>
+    ${hostname ? `<p class="text-muted" style="font-size:0.75rem;text-align:center;margin-top:8px">Opens ${esc(hostname)} in a new tab — you'll pay the brand directly</p>` : ''}
   </main>
   ${renderBottomNav()}`;
 }

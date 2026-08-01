@@ -46,9 +46,9 @@ function referralCard(r, isOwn = false) {
     </div>
     ${!isOwn ? `
     <div style="display:flex;gap:6px;align-items:center;margin-top:8px;flex-wrap:wrap">
-      <button class="btn btn-sm ${usedByMe?'btn-success':''}" style="padding:4px 10px;${usedByMe?'background:var(--success-light);color:var(--success)':'background:var(--gray-light)'};border-radius:6px" data-action="increment-referral" data-id="${esc(r.id)}" title="${usedByMe ? 'Remove your use mark' : 'Mark that you used this code'}">${usedByMe ? '✓ Used' : '+1 Use'}</button>
-      <button class="btn btn-sm ${vote==='up'?'btn-success':'btn-ghost'}" style="padding:3px 10px;font-size:0.8rem" data-action="vote-referral" data-id="${esc(r.id)}" data-vote="up" title="Works for me">👍 Works</button>
-      <button class="btn btn-sm ${vote==='down'?'btn-danger':'btn-ghost'}" style="padding:3px 10px;font-size:0.8rem" data-action="vote-referral" data-id="${esc(r.id)}" data-vote="down" title="Doesn't work">👎 Expired</button>
+      <button class="btn btn-sm ${usedByMe?'btn-success':''}" style="padding:4px 10px;gap:5px;${usedByMe?'background:var(--success-light);color:var(--success)':'background:var(--gray-light)'};border-radius:6px" data-action="increment-referral" data-id="${esc(r.id)}" title="${usedByMe ? 'Remove your use mark' : 'Mark that you used this code'}">${usedByMe ? icon.check : ''}${usedByMe ? 'Used' : '+1 Use'}</button>
+      <button class="btn btn-sm ${vote==='up'?'btn-success':'btn-ghost'}" style="padding:3px 10px;gap:5px;font-size:0.8rem" data-action="vote-referral" data-id="${esc(r.id)}" data-vote="up" title="Works for me">${icon.thumbsUp} Works</button>
+      <button class="btn btn-sm ${vote==='down'?'btn-danger':'btn-ghost'}" style="padding:3px 10px;gap:5px;font-size:0.8rem" data-action="vote-referral" data-id="${esc(r.id)}" data-vote="down" title="Doesn't work">${icon.thumbsDown} Expired</button>
     </div>
     ` : ''}
     <div class="rc-terms"><strong>Terms &amp; Conditions:</strong> ${r.terms ? esc(r.terms) : 'No terms specified'}</div>

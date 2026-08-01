@@ -15,11 +15,26 @@ export function pwField(id, name, label, placeholder, autocomplete = 'current-pa
   </div>`;
 }
 
+// Shared 72px brand mark used at the top of every auth-adjacent screen
+// (login/signup, forgot/reset password, verify email). Decorative — the
+// screen's own heading always carries the same information in text.
+function logoMark() {
+  return `
+  <div class="logo-mark">
+    <svg width="72" height="72" viewBox="0 0 72 72" fill="none" aria-hidden="true" focusable="false">
+      <rect width="72" height="72" rx="18" fill="#13B5A2"/>
+      <rect x="11" y="8" width="50" height="30" rx="9" fill="#2BD4BE" opacity="0.6"/>
+      <rect x="6" y="26" width="60" height="38" rx="11" fill="white"/>
+      <rect x="38" y="35" width="22" height="14" rx="7" fill="#11233F"/>
+    </svg>
+  </div>`;
+}
+
 export function viewWelcome() {
   return `
   <div class="welcome-screen">
     <div class="welcome-hero">
-      <svg viewBox="0 0 400 440" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMax slice">
+      <svg viewBox="0 0 400 440" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMax slice" aria-hidden="true" focusable="false">
         <defs>
           <linearGradient id="welcome-sky" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stop-color="#FFFFFF"/>
@@ -27,9 +42,9 @@ export function viewWelcome() {
             <stop offset="100%" stop-color="#FBE7D6"/>
           </linearGradient>
           <radialGradient id="welcome-glow" cx="50%" cy="38%" r="55%">
-            <stop offset="0%" stop-color="var(--accent)" stop-opacity="0.14"/>
-            <stop offset="70%" stop-color="var(--accent)" stop-opacity="0.05"/>
-            <stop offset="100%" stop-color="var(--accent)" stop-opacity="0"/>
+            <stop offset="0%" stop-color="var(--primary)" stop-opacity="0.14"/>
+            <stop offset="70%" stop-color="var(--primary)" stop-opacity="0.05"/>
+            <stop offset="100%" stop-color="var(--primary)" stop-opacity="0"/>
           </radialGradient>
           <filter id="welcome-shadow" x="-50%" y="-50%" width="200%" height="200%">
             <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="var(--dark)" flood-opacity="0.16"/>
@@ -51,7 +66,7 @@ export function viewWelcome() {
           </g>
 
           <g transform="translate(190,152) rotate(9)" filter="url(#welcome-shadow)">
-            <rect width="150" height="94" rx="14" fill="var(--accent)"/>
+            <rect width="150" height="94" rx="14" fill="var(--secondary)"/>
             <circle cx="22" cy="22" r="8" fill="#FFFFFF" opacity="0.95"/>
             <rect x="16" y="65" width="64" height="7" rx="3.5" fill="#FFFFFF" opacity="0.55"/>
             <rect x="16" y="78" width="40" height="6" rx="3" fill="#FFFFFF" opacity="0.35"/>
@@ -91,15 +106,8 @@ export function viewAuth() {
   <div class="auth-screen">
     <button type="button" class="btn-icon auth-back" data-nav="welcome">${icon.back}</button>
     <div class="auth-logo">
-      <div class="logo-mark">
-        <svg width="72" height="72" viewBox="0 0 72 72" fill="none">
-          <rect width="72" height="72" rx="18" fill="#13B5A2"/>
-          <rect x="11" y="8" width="50" height="30" rx="9" fill="#2BD4BE" opacity="0.6"/>
-          <rect x="6" y="26" width="60" height="38" rx="11" fill="white"/>
-          <rect x="38" y="35" width="22" height="14" rx="7" fill="#11233F"/>
-        </svg>
-      </div>
-      <h1><span style="color:#11233F">Voucher</span><span style="color:#13B5A2">Wise</span></h1>
+      ${logoMark()}
+      <h1 class="auth-wordmark"><span class="auth-wordmark-voucher">Voucher</span><span class="auth-wordmark-wise">Wise</span></h1>
       <p>Unlock the full value of every voucher you own.</p>
     </div>
 
@@ -121,8 +129,8 @@ export function viewAuth() {
       </div>
       ${pwField('login-password', 'password', 'Password', '••••••••', 'current-password')}
       <button type="submit" class="btn btn-primary btn-full">Log In</button>
-      <div style="text-align:center;margin-top:12px">
-        <button type="button" class="link-btn" data-nav="forgot-password" style="font-size:0.875rem;color:var(--text-muted)">Forgot password?</button>
+      <div class="auth-form-footer">
+        <button type="button" class="link-btn auth-link-muted" data-nav="forgot-password">Forgot password?</button>
       </div>
     </form>
     ` : `
@@ -151,14 +159,7 @@ export function viewResetPassword() {
   return `
   <div class="auth-screen">
     <div class="auth-logo">
-      <div class="logo-mark">
-        <svg width="72" height="72" viewBox="0 0 72 72" fill="none">
-          <rect width="72" height="72" rx="18" fill="#13B5A2"/>
-          <rect x="11" y="8" width="50" height="30" rx="9" fill="#2BD4BE" opacity="0.6"/>
-          <rect x="6" y="26" width="60" height="38" rx="11" fill="white"/>
-          <rect x="38" y="35" width="22" height="14" rx="7" fill="#11233F"/>
-        </svg>
-      </div>
+      ${logoMark()}
       <h1>Set New Password</h1>
       <p>Choose a new password for your account.</p>
     </div>
@@ -175,27 +176,20 @@ export function viewForgotPassword() {
   return `
   <div class="auth-screen">
     <div class="auth-logo">
-      <div class="logo-mark">
-        <svg width="72" height="72" viewBox="0 0 72 72" fill="none">
-          <rect width="72" height="72" rx="18" fill="#13B5A2"/>
-          <rect x="11" y="8" width="50" height="30" rx="9" fill="#2BD4BE" opacity="0.6"/>
-          <rect x="6" y="26" width="60" height="38" rx="11" fill="white"/>
-          <rect x="38" y="35" width="22" height="14" rx="7" fill="#11233F"/>
-        </svg>
-      </div>
+      ${logoMark()}
       <h1>Reset Password</h1>
       <p>Enter your email and we'll send you a reset link.</p>
     </div>
     <form id="form-forgot" class="auth-form">
       <div id="forgot-error" class="error-msg" style="display:none"></div>
-      <div id="forgot-success" style="display:none;background:var(--success-light);color:var(--success);border-radius:10px;padding:12px 14px;font-size:0.875rem;text-align:center;margin-bottom:12px"></div>
+      <div id="forgot-success" class="auth-success-msg" style="display:none"></div>
       <div class="form-group">
         <label>Email</label>
         <input type="email" name="email" placeholder="you@example.com" required autocomplete="email">
       </div>
       <button type="submit" class="btn btn-primary btn-full">Send Reset Link</button>
     </form>
-    <button class="btn btn-ghost btn-full" style="margin-top:8px" data-nav="auth" data-tab="login">Back to Log In</button>
+    <button class="btn btn-ghost btn-full auth-ghost-action" data-nav="auth" data-tab="login">Back to Log In</button>
   </div>`;
 }
 
@@ -204,22 +198,15 @@ export function viewVerifyEmail() {
   return `
   <div class="auth-screen">
     <div class="auth-logo">
-      <div class="logo-mark">
-        <svg width="72" height="72" viewBox="0 0 72 72" fill="none">
-          <rect width="72" height="72" rx="18" fill="#13B5A2"/>
-          <rect x="11" y="8" width="50" height="30" rx="9" fill="#2BD4BE" opacity="0.6"/>
-          <rect x="6" y="26" width="60" height="38" rx="11" fill="white"/>
-          <rect x="38" y="35" width="22" height="14" rx="7" fill="#11233F"/>
-        </svg>
-      </div>
+      ${logoMark()}
       <h1>Check your email</h1>
       <p>We sent a confirmation link to<br><strong>${esc(email)}</strong></p>
     </div>
-    <div style="text-align:center;padding:24px 0;color:var(--text-muted);font-size:0.9rem">
+    <div class="auth-info-text">
       Click the link in the email to activate your account.<br>This page will update automatically.
     </div>
     <button class="btn btn-primary btn-full" id="btn-resend-email" data-action="resend-email">Resend Email</button>
-    <div id="resend-msg" style="text-align:center;margin-top:10px;font-size:0.875rem;min-height:20px"></div>
-    <button class="btn btn-ghost btn-full" style="margin-top:8px" data-nav="auth" data-tab="login">Back to Log In</button>
+    <div id="resend-msg" class="auth-resend-msg"></div>
+    <button class="btn btn-ghost btn-full auth-ghost-action" data-nav="auth" data-tab="login">Back to Log In</button>
   </div>`;
 }

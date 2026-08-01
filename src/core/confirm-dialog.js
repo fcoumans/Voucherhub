@@ -12,10 +12,9 @@ export function showConfirm({ title, message, confirmLabel, confirmClass = 'btn-
       <button class="btn ${confirmClass}" id="dialog-confirm">${esc(confirmLabel)}</button>
     </div>
   </div>`;
-  document.body.appendChild(overlay);
-  mountOverlay(overlay);
-
   const close = () => closeOverlay(overlay);
+  if (!mountOverlay(overlay, close)) return;
+
   overlay.querySelector('#dialog-cancel').addEventListener('click', close);
   overlay.querySelector('#dialog-confirm').addEventListener('click', () => { close(); onConfirm(); });
   overlay.addEventListener('click', e => { if (e.target === overlay) close(); });

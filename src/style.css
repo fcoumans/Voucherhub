@@ -1,7 +1,62 @@
 /* ============================================================
+   TYPE FACES — self-hosted, no system-font fallback as the voice
+   ============================================================ */
+@font-face {
+  font-family: 'Cabinet Grotesk';
+  src: url('/fonts/cabinet-grotesk-500.woff2') format('woff2');
+  font-weight: 500;
+  font-display: swap;
+  font-style: normal;
+}
+@font-face {
+  font-family: 'Cabinet Grotesk';
+  src: url('/fonts/cabinet-grotesk-700.woff2') format('woff2');
+  font-weight: 700;
+  font-display: swap;
+  font-style: normal;
+}
+@font-face {
+  font-family: 'Cabinet Grotesk';
+  src: url('/fonts/cabinet-grotesk-800.woff2') format('woff2');
+  font-weight: 800;
+  font-display: swap;
+  font-style: normal;
+}
+@font-face {
+  font-family: 'General Sans';
+  src: url('/fonts/general-sans-400.woff2') format('woff2');
+  font-weight: 400;
+  font-display: swap;
+  font-style: normal;
+}
+@font-face {
+  font-family: 'General Sans';
+  src: url('/fonts/general-sans-500.woff2') format('woff2');
+  font-weight: 500;
+  font-display: swap;
+  font-style: normal;
+}
+@font-face {
+  font-family: 'General Sans';
+  src: url('/fonts/general-sans-600.woff2') format('woff2');
+  font-weight: 600;
+  font-display: swap;
+  font-style: normal;
+}
+@font-face {
+  font-family: 'General Sans';
+  src: url('/fonts/general-sans-700.woff2') format('woff2');
+  font-weight: 700;
+  font-display: swap;
+  font-style: normal;
+}
+
+/* ============================================================
    VARIABLES
    ============================================================ */
 :root {
+  --font-display: 'Cabinet Grotesk', 'General Sans', -apple-system, sans-serif;
+  --font-body: 'General Sans', -apple-system, BlinkMacSystemFont, sans-serif;
   --primary: #13B5A2;
   --primary-light: #CFF1E8;
   --primary-dark: #0E9488;
@@ -42,7 +97,7 @@ html { height: 100%; font-size: 16px; }
 
 body {
   height: 100%;
-  font-family: Arial, 'Helvetica Neue', 'Segoe UI', sans-serif;
+  font-family: var(--font-body);
   background: var(--bg);
   color: var(--text);
   -webkit-font-smoothing: antialiased;
@@ -66,10 +121,11 @@ img { max-width: 100%; }
 /* ============================================================
    TYPOGRAPHY
    ============================================================ */
-h1 { font-size: 1.75rem; font-weight: 800; letter-spacing: -0.02em; color: var(--dark); }
-h2 { font-size: 1.375rem; font-weight: 700; letter-spacing: -0.01em; color: var(--dark); }
-h3 { font-size: 1.0625rem; font-weight: 700; color: var(--dark); }
-h4 { font-size: 0.9375rem; font-weight: 600; color: var(--dark); }
+h1, h2, h3 { font-family: var(--font-display); }
+h1 { font-size: 1.875rem; font-weight: 800; letter-spacing: -0.02em; color: var(--dark); }
+h2 { font-size: 1.4375rem; font-weight: 700; letter-spacing: -0.015em; color: var(--dark); }
+h3 { font-size: 1.0625rem; font-weight: 700; letter-spacing: -0.01em; color: var(--dark); }
+h4 { font-size: 0.9375rem; font-weight: 700; color: var(--dark); }
 p { line-height: 1.5; }
 
 .text-muted { color: var(--text-muted); }
@@ -150,9 +206,11 @@ p { line-height: 1.5; }
   gap: 3px;
   color: var(--text-muted);
   padding: 6px 0;
-  transition: color 0.15s;
+  transition: color 0.15s, opacity 100ms var(--ease-out);
   -webkit-tap-highlight-color: transparent;
 }
+
+.nav-item:active { opacity: 0.6; }
 
 .nav-item.active {
   color: var(--primary);
@@ -256,8 +314,11 @@ p { line-height: 1.5; }
   font-size: 0.9375rem;
   font-weight: 600;
   padding: 4px 0;
+  transition: opacity 100ms var(--ease-out);
   -webkit-tap-highlight-color: transparent;
 }
+
+.btn-back:active { opacity: 0.6; }
 
 .link-btn {
   color: var(--primary);
@@ -412,12 +473,17 @@ p { line-height: 1.5; }
   border: none;
   background: rgba(17, 35, 63, 0.65);
   color: white;
-  font-size: 0.6875rem;
   line-height: 1;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
+  transition: background 120ms ease, transform 120ms var(--ease-out);
+}
+
+.attachment-remove:active {
+  background: rgba(17, 35, 63, 0.85);
+  transform: scale(0.92);
 }
 
 .attachment-add {
@@ -431,6 +497,17 @@ p { line-height: 1.5; }
   color: var(--text-muted);
   font-size: 0.6875rem;
   font-weight: 600;
+  transition: border-color 150ms ease, color 150ms ease, transform 120ms var(--ease-out);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.attachment-add:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.attachment-add:active {
+  transform: scale(0.96);
 }
 
 .barcode-tile {
@@ -482,14 +559,19 @@ p { line-height: 1.5; }
 }
 
 .barcode-not-found {
-  padding: 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
   border-radius: var(--radius-sm);
   border: 1.5px dashed var(--border);
   color: var(--text-muted);
   font-size: 0.875rem;
-  text-align: center;
+  text-align: left;
   margin: 0;
 }
+
+.barcode-not-found svg { flex-shrink: 0; color: var(--secondary); }
 
 .barcode-display img {
   max-width: 100%;
@@ -584,6 +666,11 @@ p { line-height: 1.5; }
   color: var(--text-muted);
 }
 
+.auth-back:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
 .auth-logo {
   text-align: center;
   margin-bottom: 40px;
@@ -605,6 +692,10 @@ p { line-height: 1.5; }
   color: var(--dark);
   margin-bottom: 6px;
 }
+
+.auth-wordmark { letter-spacing: -0.02em; }
+.auth-wordmark-voucher { color: var(--dark); }
+.auth-wordmark-wise { color: var(--primary); }
 
 .auth-logo p {
   color: var(--text-muted);
@@ -636,7 +727,67 @@ p { line-height: 1.5; }
   box-shadow: var(--shadow);
 }
 
-.auth-form { width: 100%; }
+.auth-tab:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.auth-form {
+  width: 100%;
+  animation: authFormIn 320ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes authFormIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-form { animation: none; }
+}
+
+.auth-form .btn[disabled] {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.auth-form-footer {
+  text-align: center;
+  margin-top: 12px;
+}
+
+.auth-link-muted {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+}
+
+.auth-ghost-action { margin-top: 8px; }
+
+.auth-success-msg {
+  background: var(--success-light);
+  color: var(--success);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  font-size: 0.875rem;
+  text-align: center;
+  margin-bottom: 12px;
+}
+
+.auth-info-text {
+  text-align: center;
+  padding: 24px 0;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+
+.auth-resend-msg {
+  text-align: center;
+  margin-top: 10px;
+  font-size: 0.875rem;
+  min-height: 20px;
+  color: var(--text-muted);
+}
 
 /* ============================================================
    WELCOME SCREEN (onboarding splash)
@@ -694,6 +845,7 @@ p { line-height: 1.5; }
 }
 
 .welcome-title-brand {
+  font-family: var(--font-display);
   font-size: 2rem;
   font-weight: 800;
   letter-spacing: -0.02em;
@@ -762,6 +914,10 @@ p { line-height: 1.5; }
     transform: none;
   }
 
+  .gift-box:not(.open) {
+    animation: none;
+  }
+
   .confetti-layer.burst .confetti-piece {
     animation: none;
     opacity: 0;
@@ -774,6 +930,15 @@ p { line-height: 1.5; }
 
   .gift-reveal-card.revealed {
     transform: translate(-50%, 0);
+  }
+
+  .gift-reveal-card.revealed::after {
+    animation: none;
+    opacity: 0;
+  }
+
+  .gift-reveal-continue {
+    transition: opacity 150ms ease;
   }
 }
 
@@ -796,10 +961,11 @@ p { line-height: 1.5; }
 .home-header h2 { font-size: 1.375rem; }
 
 .stats-card {
-  /* Liquid glass, navy-dominant: high opacity so the page background can't wash out the blue; blur/saturate still gives it glass richness */
+  /* Near-opaque navy so the page background can't wash out the blue — at
+     this opacity a backdrop-filter has nothing left to reveal, so it's
+     dropped rather than paid for on every scroll frame with no visible
+     effect. Glass richness comes from the gradient + inset highlight instead. */
   background: linear-gradient(135deg, rgba(15, 31, 58, 0.98) 0%, rgba(28, 51, 84, 0.92) 100%);
-  backdrop-filter: blur(20px) saturate(180%);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: var(--radius);
   padding: 20px 24px;
@@ -818,6 +984,7 @@ p { line-height: 1.5; }
 }
 
 .stat-value {
+  font-family: var(--font-display);
   font-size: 1.625rem;
   font-weight: 800;
   color: #ffffff;
@@ -825,7 +992,7 @@ p { line-height: 1.5; }
   letter-spacing: -0.02em;
 }
 
-.stat-value.text-warning { color: #FF7A59; }
+.stat-value.text-warning { color: var(--warning); }
 
 .stat-label {
   font-size: 0.6875rem;
@@ -893,6 +1060,9 @@ p { line-height: 1.5; }
   display: flex;
   align-items: center;
   justify-content: center;
+  background: var(--primary-light);
+  color: var(--primary);
+  flex-shrink: 0;
 }
 
 .quick-action span {
@@ -924,19 +1094,19 @@ p { line-height: 1.5; }
   gap: 12px;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7), 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
   cursor: pointer;
-  transition: transform 160ms var(--ease-out);
+  transition: transform 160ms var(--ease-out), opacity 160ms ease;
   -webkit-tap-highlight-color: transparent;
-  border-left: 4px solid transparent;
 }
 
 .voucher-card:active { transform: scale(0.99); }
 
-.voucher-card.status-active { border-left-color: var(--success); }
-.voucher-card.status-expiring { border-left-color: var(--warning); }
-.voucher-card.status-expired { border-left-color: var(--danger); opacity: 0.7; }
-.voucher-card.status-used { border-left-color: var(--gray); opacity: 0.6; }
-.voucher-card.status-sold { border-left-color: var(--gray); opacity: 0.6; }
-.voucher-card.status-listed { border-left-color: var(--primary); background: var(--primary-light); opacity: 0.85; }
+.voucher-card.status-expired,
+.voucher-card.status-used,
+.voucher-card.status-sold { opacity: 0.6; }
+.voucher-card.status-listed {
+  background: linear-gradient(135deg, var(--primary-light) 0%, rgba(207, 241, 232, 0.5) 100%);
+  border-color: rgba(19, 181, 162, 0.3);
+}
 
 .vc-listed-hint {
   font-size: 0.75rem;
@@ -974,6 +1144,7 @@ p { line-height: 1.5; }
 }
 
 .vc-value {
+  font-family: var(--font-display);
   font-size: 1rem;
   font-weight: 800;
   color: var(--text);
@@ -1048,17 +1219,26 @@ p { line-height: 1.5; }
    VOUCHER DETAIL
    ============================================================ */
 .voucher-detail-header {
+  /* Warm Vault treatment: the same navy liquid-glass recipe as .stats-card
+     (see HOME SCREEN), with a soft emerald glow worked into the gradient
+     itself — the brand's one accent, not a second decorative surface — in
+     place of the old flat #13B5A2 fill. */
+  background:
+    radial-gradient(130% 100% at 100% 0%, rgba(19, 181, 162, 0.35) 0%, rgba(19, 181, 162, 0) 60%),
+    linear-gradient(135deg, rgba(15, 31, 58, 0.98) 0%, rgba(28, 51, 84, 0.92) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: var(--radius);
-  padding: 24px 20px;
+  padding: 28px 20px 24px;
   text-align: center;
   color: white;
   margin-bottom: 20px;
   position: relative;
   overflow: hidden;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.15), 0 8px 24px rgba(17, 35, 63, 0.2), 0 2px 6px rgba(17, 35, 63, 0.1);
 }
 
-
 .vd-brand {
+  font-family: var(--font-display);
   font-size: 1.5rem;
   font-weight: 800;
   margin-bottom: 4px;
@@ -1067,12 +1247,33 @@ p { line-height: 1.5; }
 }
 
 .vd-value {
+  font-family: var(--font-display);
   font-size: 2.5rem;
   font-weight: 800;
   letter-spacing: -0.02em;
   position: relative;
   z-index: 1;
 }
+
+.vd-status {
+  margin-top: 10px;
+  position: relative;
+  z-index: 1;
+}
+
+/* Badges keep their semantic color family but need a lighter, hue-tinted
+   value (never gray — see craft floor) plus a frosted chip behind them to
+   read clearly against the dark navy instead of the badge system's default
+   transparent/light-surface backgrounds. */
+.voucher-detail-header .badge {
+  background: rgba(255, 255, 255, 0.16);
+  backdrop-filter: blur(6px);
+}
+.voucher-detail-header .badge-success { color: #7EEAD1; }
+.voucher-detail-header .badge-warning { color: #FFB199; }
+.voucher-detail-header .badge-danger  { color: #FCA5A5; }
+.voucher-detail-header .badge-gray    { color: rgba(255, 255, 255, 0.8); }
+.voucher-detail-header .badge-primary { color: #7EEAD1; }
 
 .detail-grid {
   display: grid;
@@ -1102,6 +1303,14 @@ p { line-height: 1.5; }
   font-weight: 700;
   color: var(--text);
   word-break: break-all;
+}
+
+/* Money gets the display face with intent — Original Value / Remaining
+   Balance only, not every detail-item (Category, Type, Notes stay body). */
+.detail-item-value-money {
+  font-family: var(--font-display);
+  font-size: 1rem;
+  letter-spacing: -0.01em;
 }
 
 .code-display {
@@ -1192,7 +1401,10 @@ p { line-height: 1.5; }
 .vc-note-hint {
   font-size: 0.75rem;
   font-weight: 600;
-  color: var(--accent);
+  /* var(--accent) itself is ~2.6:1 on a near-white card — too low for
+     0.75rem text. Darkened within the same Warm Coral hue (not gray, per
+     craft floor) to clear 4.5:1 while still reading as the gifting accent. */
+  color: #A83A0A;
   margin-top: 2px;
 }
 
@@ -1248,7 +1460,9 @@ p { line-height: 1.5; }
   justify-content: space-between;
   font-size: 0.8125rem;
   font-weight: 700;
-  color: var(--accent);
+  /* Same Warm Coral, darkened for contrast on the peach card — see
+     .vc-note-hint. */
+  color: #A83A0A;
   margin-bottom: 10px;
 }
 
@@ -1303,7 +1517,7 @@ p { line-height: 1.5; }
   margin-top: 8px;
   font-size: 0.875rem;
   font-weight: 700;
-  color: var(--accent);
+  color: #A83A0A;
 }
 
 .gift-reveal-note {
@@ -1345,6 +1559,23 @@ p { line-height: 1.5; }
   margin-bottom: 4px;
 }
 
+/* "Trusted Community" flag on a browse-tab card — a light tint with dark
+   ink text (not colored-on-colored) so it stays legible at badge size. */
+.lc-tag {
+  display: inline-flex;
+  align-items: center;
+  background: var(--primary-light);
+  color: var(--text);
+  font-size: 0.625rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-left: 4px;
+  vertical-align: middle;
+}
+
 .lc-seller {
   font-size: 0.8125rem;
   color: var(--text-muted);
@@ -1352,11 +1583,20 @@ p { line-height: 1.5; }
 
 .lc-right { text-align: right; flex-shrink: 0; }
 
-.lc-price {
-  font-size: 1.125rem;
-  font-weight: 800;
-  color: var(--success);
+.lc-price-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: 6px;
   margin-bottom: 2px;
+}
+
+.lc-price {
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--success);
 }
 
 .lc-original {
@@ -1365,26 +1605,33 @@ p { line-height: 1.5; }
   text-decoration: line-through;
 }
 
+/* Discount chip: a light success tint with dark ink text, not
+   color-on-color — keeps it well above 4.5:1 at small sizes wherever it
+   lands (browse card or the listing-detail header). */
 .discount-badge {
   display: inline-flex;
   align-items: center;
-  background: var(--warning-light);
-  color: var(--warning);
-  font-size: 0.6875rem;
-  font-weight: 700;
-  padding: 2px 6px;
+  background: var(--success-light);
+  color: var(--text);
+  font-size: 0.75rem;
+  font-weight: 800;
+  padding: 2px 7px;
   border-radius: 4px;
+  white-space: nowrap;
 }
 
 /* ============================================================
    REFERRAL CARDS
    ============================================================ */
 .referral-card {
-  background: var(--surface);
+  /* Liquid glass, matching .voucher-card / .listing-card */
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.8) 0%, rgba(244, 241, 232, 0.35) 100%);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.4);
   border-radius: var(--radius);
   padding: 14px;
-  box-shadow: var(--shadow);
-  border: 1px solid var(--border);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7), 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
   margin-bottom: 10px;
 }
 
@@ -1408,20 +1655,24 @@ p { line-height: 1.5; }
 }
 
 .rc-code-row {
+  /* The code is the actual payoff of this card — give it more visual
+     weight than the metadata around it (brand/owner header, benefit
+     tags, usage count), which all stay muted and small by comparison. */
   display: flex;
   align-items: center;
-  gap: 8px;
-  background: var(--gray-light);
+  gap: 10px;
+  background: var(--primary-light);
   border-radius: var(--radius-sm);
-  padding: 8px 12px;
-  margin-bottom: 8px;
+  padding: 12px 14px;
+  margin-bottom: 10px;
 }
 
 .rc-code {
   flex: 1;
   font-family: 'SF Mono', 'Fira Code', monospace;
-  font-size: 0.9375rem;
-  font-weight: 700;
+  font-size: 1.1875rem;
+  font-weight: 800;
+  letter-spacing: 0.01em;
   color: var(--primary-dark);
   word-break: break-all;
 }
@@ -1475,8 +1726,10 @@ p { line-height: 1.5; }
 }
 
 .profile-name {
+  font-family: var(--font-display);
   font-size: 1.25rem;
   font-weight: 800;
+  letter-spacing: -0.02em;
   margin-bottom: 2px;
 }
 
@@ -1528,8 +1781,10 @@ p { line-height: 1.5; }
 }
 
 .kpi-value {
+  font-family: var(--font-display);
   font-size: 1.0625rem;
   font-weight: 800;
+  letter-spacing: -0.01em;
   color: var(--primary);
   line-height: 1.2;
   white-space: nowrap;
@@ -1708,6 +1963,19 @@ p { line-height: 1.5; }
   transition: transform 200ms var(--ease-out);
 }
 
+/* Grab affordance injected by core/dom.js's enableSheetDrag — swipe the
+   sheet down to dismiss it, 1:1 with the pointer. touch-action:none stops
+   the browser's own scroll/pull gesture from fighting the pointer drag. */
+.dialog-handle {
+  width: 36px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border);
+  margin: 0 auto 16px;
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
 .dialog h3 {
   font-size: 1.125rem;
   margin-bottom: 8px;
@@ -1725,6 +1993,33 @@ p { line-height: 1.5; }
 }
 
 .dialog-actions .btn { flex: 1; }
+
+@media (prefers-reduced-motion: reduce) {
+  .dialog {
+    transition: opacity 150ms ease;
+    transform: none;
+    opacity: 0;
+  }
+
+  .overlay.show .dialog {
+    opacity: 1;
+  }
+
+  /* Sheets are dismissed by tap only under reduced motion (see
+     core/dom.js's enableSheetDrag), so the drag handle has nothing to do. */
+  .dialog-handle {
+    display: none;
+  }
+
+  .toast {
+    transition: opacity 150ms ease;
+    transform: translateX(-50%);
+  }
+
+  .toast.show {
+    transform: translateX(-50%);
+  }
+}
 
 .pending-gifts-pill {
   display: flex;
@@ -1747,6 +2042,8 @@ p { line-height: 1.5; }
   display: flex;
   justify-content: center;
   background: #fff;
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
   border-radius: var(--radius-sm);
   padding: 16px;
   margin: 16px 0;
@@ -1832,6 +2129,20 @@ p { line-height: 1.5; }
   height: 100px;
 }
 
+/* A brief anticipation wobble while the box is still closed — matches the
+   450ms beat before .open lands, so the box "gathers itself" right up to
+   the moment it pops. This is the one place in the app celebratory motion
+   is sanctioned; it never runs anywhere the box isn't about to open. */
+@keyframes giftBoxAnticipate {
+  0%, 100% { transform: scale(1) rotate(0deg); }
+  35%      { transform: scale(1.045) rotate(-2deg); }
+  70%      { transform: scale(1.045) rotate(2deg); }
+}
+
+.gift-box:not(.open) {
+  animation: giftBoxAnticipate 0.45s ease-in-out 1;
+}
+
 .gift-box-base {
   position: absolute;
   bottom: 0;
@@ -1903,6 +2214,12 @@ p { line-height: 1.5; }
   opacity: 0;
 }
 
+/* Set by gifting.js on roughly half the pieces for a mixed confetti shape —
+   plain squares read as static, a square/dot mix reads as actual confetti. */
+.confetti-piece-dot {
+  border-radius: 50%;
+}
+
 .confetti-layer.burst .confetti-piece {
   animation: confettiBurst 1.1s ease-out forwards;
   animation-delay: var(--delay, 0s);
@@ -1917,8 +2234,8 @@ p { line-height: 1.5; }
   position: absolute;
   bottom: 10px;
   left: 50%;
-  width: 180px;
-  padding: 20px 16px;
+  width: 200px;
+  padding: 22px 18px;
   background: linear-gradient(135deg, #13B5A2, #0E9488);
   border-radius: var(--radius);
   box-shadow: 0 16px 32px rgba(17, 35, 63, 0.22);
@@ -1926,6 +2243,7 @@ p { line-height: 1.5; }
   transform: translate(-50%, 10px) scale(0.5);
   opacity: 0;
   transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.4s ease;
+  overflow: hidden;
   z-index: 1;
 }
 
@@ -1934,15 +2252,43 @@ p { line-height: 1.5; }
   opacity: 1;
 }
 
+/* One-shot light sweep once the card has landed — the single extra flourish
+   this moment is allowed; it plays once and never loops. */
+.gift-reveal-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(115deg, transparent 25%, rgba(255, 255, 255, 0.5) 45%, transparent 65%);
+  transform: translateX(-130%);
+  pointer-events: none;
+}
+
+.gift-reveal-card.revealed::after {
+  animation: giftCardShine 0.9s ease-out 0.35s 1;
+}
+
+@keyframes giftCardShine {
+  to { transform: translateX(130%); }
+}
+
 .gift-reveal-card-brand {
   font-weight: 700;
-  font-size: 1rem;
-  margin-bottom: 4px;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  /* Full-opacity white + a soft shadow, not a dimmed opacity — the gradient
+     underneath swings light-to-dark and a translucent label loses contrast
+     on the lighter (top-left) end. */
+  text-shadow: 0 1px 4px rgba(17, 35, 63, 0.35);
+  margin-bottom: 6px;
 }
 
 .gift-reveal-card-value {
+  font-family: var(--font-display);
   font-weight: 800;
-  font-size: 1.5rem;
+  font-size: 1.75rem;
+  letter-spacing: -0.02em;
+  text-shadow: 0 1px 4px rgba(17, 35, 63, 0.25);
 }
 
 .gift-reveal-caption {
@@ -1957,6 +2303,14 @@ p { line-height: 1.5; }
 
 .gift-reveal-continue {
   min-width: 160px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 300ms ease;
+}
+
+.gift-reveal-continue.show {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .scan-loading {
@@ -1970,6 +2324,19 @@ p { line-height: 1.5; }
   justify-content: center;
   text-align: center;
   padding: 32px;
+  /* Mounted once via a direct DOM insert per scan (not part of the
+     templated re-render cycle), so this entrance only ever plays once —
+     the one authored moment for this screen. Mirrors .auth-form's mount. */
+  animation: scanLoadingIn 260ms var(--ease-out);
+}
+
+@keyframes scanLoadingIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scan-loading { animation: none; }
 }
 
 .scan-spinner {
@@ -2065,18 +2432,48 @@ p { line-height: 1.5; }
    LISTING DETAIL
    ============================================================ */
 .listing-detail-header {
+  /* Warm Vault ink material — same navy-gradient glass recipe as the home
+     stats-card, per DESIGN.md's Elevation & Depth section (this is the
+     documented treatment for voucher/listing detail headers, not a
+     second decorative surface). */
+  background: linear-gradient(135deg, rgba(15, 31, 58, 0.98) 0%, rgba(28, 51, 84, 0.92) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: var(--radius);
   padding: 24px 20px;
   margin-bottom: 16px;
   color: white;
   position: relative;
   overflow: hidden;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.15), 0 8px 24px rgba(17, 35, 63, 0.2), 0 2px 6px rgba(17, 35, 63, 0.1);
 }
 
+.ld-brand {
+  font-family: var(--font-display);
+  font-size: 1.375rem;
+  font-weight: 800;
+  margin-bottom: 10px;
+  position: relative;
+  z-index: 1;
+  color: rgba(255, 255, 255, 0.85);
+}
 
-.ld-brand { font-size: 1.375rem; font-weight: 800; margin-bottom: 4px; position: relative; z-index: 1; }
-.ld-price { font-size: 2rem; font-weight: 800; letter-spacing: -0.02em; position: relative; z-index: 1; }
-.ld-original { font-size: 0.9375rem; opacity: 0.75; text-decoration: line-through; position: relative; z-index: 1; }
+.ld-price-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  position: relative;
+  z-index: 1;
+  margin-bottom: 4px;
+}
+
+/* Emerald reads at 6.4:1 on this navy — the one place a big numeral takes
+   the brand accent directly, per DESIGN.md's "big numerals" rule. */
+.ld-price { font-family: var(--font-display); font-size: 2.25rem; font-weight: 800; letter-spacing: -0.02em; color: var(--primary); line-height: 1; }
+.ld-original { font-size: 0.9375rem; color: rgba(255, 255, 255, 0.75); text-decoration: line-through; position: relative; z-index: 1; }
+
+/* Discount chip inside the header sits on its own light tint (see
+   .discount-badge), so it stays legible regardless of the navy behind it. */
+.listing-detail-header .discount-badge { font-size: 0.8125rem; padding: 4px 9px; }
 
 /* ============================================================
    DIVIDER

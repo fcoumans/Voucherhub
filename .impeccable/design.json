@@ -1,0 +1,119 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-08-01T18:00:00Z",
+  "title": "Design System: VoucherWise",
+  "extensions": {
+    "colorMeta": {
+      "primary": { "role": "primary", "displayName": "Emerald Sea", "canonical": "#13B5A2", "tonalRamp": ["#052B26", "#0A4A42", "#0E9488", "#13B5A2", "#3FC7BA", "#7FDBD2", "#CFF1E8", "#EFFAF7"] },
+      "secondary": { "role": "secondary", "displayName": "Slate Mist", "canonical": "#9AA6B2", "tonalRamp": ["#2A3138", "#454E57", "#5E6871", "#7A848D", "#9AA6B2", "#BCC5CD", "#DDE2E7", "#F2F4F6"] },
+      "accent": { "role": "tertiary", "displayName": "Warm Coral", "canonical": "#FF7A59", "tonalRamp": ["#5C1E0C", "#8F3419", "#C24B26", "#F0623B", "#FF7A59", "#FF9E85", "#FFC5B4", "#FFEAE0"] },
+      "ink": { "role": "neutral", "displayName": "Deep Navy Ink", "canonical": "#11233F", "tonalRamp": ["#050A13", "#0B1526", "#11233F", "#1C3358", "#445162", "#7C8797", "#C3C9D1", "#E9EBEF"] },
+      "neutral-bg": { "role": "neutral", "displayName": "Warm Cream", "canonical": "#F4F1E8", "tonalRamp": ["#3A362A", "#665F4A", "#948C6E", "#C2B999", "#E4DFC9", "#F4F1E8", "#F9F7F1", "#FDFCF9"] },
+      "ink-hover": { "role": "neutral", "displayName": "Deep Navy Ink Hover", "canonical": "#0C1A30", "tonalRamp": ["#000000", "#050A13", "#0C1A30", "#11233F", "#1C3358", "#445162", "#7C8797", "#C3C9D1"] },
+      "amber-ribbon": { "role": "tertiary", "displayName": "Amber Ribbon", "canonical": "#F98513", "tonalRamp": ["#502B04", "#7A4207", "#A6590A", "#D6710A", "#F98513", "#FBA34D", "#FDC58C", "#FEE3C4"] },
+      "amber-ribbon-deep": { "role": "tertiary", "displayName": "Amber Ribbon Deep", "canonical": "#D6710A", "tonalRamp": ["#3D2003", "#663505", "#934C08", "#D6710A", "#F98513", "#FBA34D", "#FDC58C", "#FEE3C4"] },
+      "shadow-ink": { "role": "neutral", "displayName": "Shadow Ink", "canonical": "rgba(0,0,0,0.1)", "tonalRamp": [] },
+      "desktop-backdrop": { "role": "neutral", "displayName": "Desktop Backdrop", "canonical": "#DDD9CE", "tonalRamp": ["#3A382F", "#615E4F", "#87836C", "#ADA88C", "#C6C2AD", "#DDD9CE", "#ECEAE2", "#F7F6F2"] },
+      "accent-deep": { "role": "tertiary", "displayName": "Warm Coral Deep", "canonical": "#A83A0A", "tonalRamp": ["#2E0F03", "#502004", "#7A3006", "#A83A0A", "#F0623B", "#FF9E85", "#FFC5B4", "#FFEAE0"] },
+      "success-bright": { "role": "status", "displayName": "Success Bright (on-dark)", "canonical": "#7EEAD1", "tonalRamp": [] },
+      "warning-bright": { "role": "status", "displayName": "Warning Bright (on-dark)", "canonical": "#FFB199", "tonalRamp": [] },
+      "danger-bright": { "role": "status", "displayName": "Danger Bright (on-dark)", "canonical": "#FCA5A5", "tonalRamp": [] }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Cabinet Grotesk", "purpose": "Screen titles, money values, KPI numerals — never body copy." },
+      "body": { "displayName": "General Sans", "purpose": "All reading text, labels, form inputs." },
+      "label": { "displayName": "General Sans (uppercase label)", "purpose": "Badges, KPI/detail-item labels — short data labels attached to a value only, never a floating kicker." },
+      "mono": { "displayName": "SF Mono", "purpose": "Voucher and referral codes only — a real measurement/data use." },
+      "gift-note": { "displayName": "Georgia (gift note)", "purpose": "The one deliberate serif exception: the personal gift message and its display, kept distinct from the rest of the functional app." }
+    },
+    "shadows": [
+      { "name": "ambient-resting", "value": "0 1px 3px rgba(17,35,63,0.05), 0 2px 8px rgba(17,35,63,0.04)", "purpose": "Flat surfaces at rest (tabs, chips, plain cards)." },
+      { "name": "glass-card", "value": "inset 0 1px 0 rgba(255,255,255,0.7), 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -4px rgba(0,0,0,0.1)", "purpose": "Every liquid-glass surface: voucher, listing, referral cards, quick actions, KPI cards, settings list." },
+      { "name": "lifted", "value": "0 4px 16px rgba(17,35,63,0.12), 0 8px 32px rgba(17,35,63,0.08)", "purpose": "FAB and primary floating CTA." }
+    ],
+    "motion": [
+      { "name": "ease-out", "value": "cubic-bezier(0.23, 1, 0.32, 1)", "purpose": "Default press/settle easing for buttons and cards." },
+      { "name": "ease-drawer", "value": "cubic-bezier(0.32, 0.72, 0, 1)", "purpose": "Bottom-sheet dialogs sliding in from the edge." }
+    ],
+    "breakpoints": [
+      { "name": "app-shell-max", "value": "480px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Main call-to-action across forms, sheets, and detail actions.",
+      "html": "<button class=\"ds-btn-primary\">Add Voucher</button>",
+      "css": ".ds-btn-primary { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 12px 20px; border-radius: 10px; font-family: 'General Sans', sans-serif; font-size: 0.9375rem; font-weight: 700; background: #13B5A2; color: #fff; border: none; transition: transform 160ms cubic-bezier(0.23,1,0.32,1), background 150ms ease; } .ds-btn-primary:hover { background: #0E9488; } .ds-btn-primary:active { transform: scale(0.97); } .ds-btn-primary:focus-visible { outline: 2px solid #0E9488; outline-offset: 2px; }"
+    },
+    {
+      "name": "Liquid Glass Card",
+      "kind": "card",
+      "refersTo": "card-glass",
+      "description": "The signature surface: voucher/listing/referral list rows, quick actions, KPI cards.",
+      "html": "<div class=\"ds-card-glass\"><div class=\"ds-card-glass-title\">Zalando</div><div class=\"ds-card-glass-sub\">•••• 4821</div></div>",
+      "css": ".ds-card-glass { background: linear-gradient(135deg, rgba(255,255,255,0.8) 0%, rgba(244,241,232,0.35) 100%); backdrop-filter: blur(20px) saturate(180%); -webkit-backdrop-filter: blur(20px) saturate(180%); border: 1px solid rgba(255,255,255,0.4); border-radius: 16px; padding: 14px; box-shadow: inset 0 1px 0 rgba(255,255,255,0.7), 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -4px rgba(0,0,0,0.1); transition: transform 160ms cubic-bezier(0.23,1,0.32,1); } .ds-card-glass:active { transform: scale(0.99); } .ds-card-glass-title { font-family: 'General Sans', sans-serif; font-weight: 700; font-size: 0.9375rem; color: #11233F; } .ds-card-glass-sub { font-size: 0.8125rem; color: #445162; font-family: 'SF Mono', monospace; }"
+    },
+    {
+      "name": "Status Badge",
+      "kind": "chip",
+      "refersTo": "badge-primary",
+      "description": "Pill-shaped status/category label; the sole carrier of status color, replacing the removed card border-left pattern.",
+      "html": "<span class=\"ds-badge\">Active</span>",
+      "css": ".ds-badge { display: inline-flex; align-items: center; padding: 3px 8px; border-radius: 20px; font-family: 'General Sans', sans-serif; font-size: 0.6875rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; background: #CFF1E8; color: #0E9488; }"
+    },
+    {
+      "name": "Filter Chip",
+      "kind": "chip",
+      "refersTo": "chip",
+      "description": "Horizontal scrollable filter/tab control.",
+      "html": "<button class=\"ds-chip ds-chip-active\">Expiring</button>",
+      "css": ".ds-chip { padding: 6px 14px; border-radius: 20px; font-family: 'General Sans', sans-serif; font-size: 0.8125rem; font-weight: 700; background: #FFFFFF; color: #445162; border: 1.5px solid rgba(17,35,63,0.08); transition: background 150ms ease, color 150ms ease, border-color 150ms ease; } .ds-chip-active, .ds-chip:hover { background: #CFF1E8; color: #0E9488; border-color: #CFF1E8; }"
+    },
+    {
+      "name": "Bottom Nav Item",
+      "kind": "nav",
+      "refersTo": "nav-item",
+      "description": "5-item fixed bottom navigation; icon + label, active state is color-only.",
+      "html": "<button class=\"ds-nav-item ds-nav-item-active\"><svg width=\"22\" height=\"22\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z\"/><polyline points=\"9 22 9 12 15 12 15 22\"/></svg><span>Home</span></button>",
+      "css": ".ds-nav-item { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; padding: 6px 0; color: #445162; font-family: 'General Sans', sans-serif; font-size: 0.6875rem; font-weight: 600; transition: color 150ms ease; background: none; border: none; } .ds-nav-item-active { color: #13B5A2; }"
+    },
+    {
+      "name": "Text Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Standard form field used across add/edit voucher, auth, and referral forms.",
+      "html": "<input class=\"ds-input\" placeholder=\"Search or type a brand…\">",
+      "css": ".ds-input { padding: 12px 14px; border: 1.5px solid rgba(17,35,63,0.08); border-radius: 10px; font-family: 'General Sans', sans-serif; font-size: 0.9375rem; color: #11233F; background: #FFFFFF; width: 100%; transition: border-color 0.15s; outline: none; } .ds-input:focus { border-color: #13B5A2; box-shadow: 0 0 0 3px rgba(19,181,162,0.12); }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Warm Vault",
+    "overview": "VoucherWise is a place of custody, not a discount bin: it holds real financial value (voucher codes, PINs, resale cash) and has to read as trustworthy at a glance, the way a banking app does. But the brief explicitly rejects fintech's blue austerity — so the vault is lined with warmth: a cream-and-glass material system, an emerald accent that reads as growth rather than corporate trust-blue, and rare, deliberate celebratory moments that never bleed into the everyday screens. The system is calm by default and animates with purpose, not decoration. Every screen states voucher value, expiration, and price with the same unambiguous clarity a bank statement would use, and every surface is legible before it is charming.",
+    "keyCharacteristics": [
+      "A single sanctioned decorative move — the liquid-glass sheen — applied consistently across primary cards, never as one-off flourish.",
+      "Warm cream base instead of cold fintech white/gray, with a deep navy ink for text and structural surfaces.",
+      "Emerald as the one confident accent; everything else in the palette is neutral or purely functional.",
+      "A distinct self-hosted display face for numbers and headings — money and headlines are never rendered in the system font."
+    ],
+    "rules": [
+      { "name": "The One Accent Rule", "body": "Emerald is the only color allowed to signal \"this is interactive/primary\" on a calm screen. Success/warning/danger colors are reserved strictly for their semantic meaning and must never be reused decoratively.", "section": "colors" },
+      { "name": "The No-System-Font Rule", "body": "Cabinet Grotesk and General Sans are the brand voice; the system sans stack is a loading fallback only, never a deliberate choice.", "section": "typography" },
+      { "name": "The Glass-Is-The-One-Decoration Rule", "body": "backdrop-filter: blur(20px) saturate(180%) plus the diagonal white-to-cream sheen is the single sanctioned decorative surface treatment. It must be applied identically everywhere a primary content card appears and must never appear as a one-off on a single screen.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do use the liquid-glass recipe verbatim on every primary content card, including newly added ones.",
+      "Do render every icon as an authored SVG from the shared icon set, 2-2.5px stroke, rounded caps.",
+      "Do keep the accent coral reserved for the gift-note/celebration moments only.",
+      "Do set display type (Cabinet Grotesk) on money values and headings; body copy stays in General Sans."
+    ],
+    "donts": [
+      "Don't reintroduce a colored border-left/right on cards or list items as a status signal — use the badge + tint pattern instead.",
+      "Don't use emoji as a stand-in for the icon system on interactive controls.",
+      "Don't fall back to the system font stack as a deliberate choice.",
+      "Don't add a second accent color or a second decorative surface treatment alongside liquid-glass."
+    ]
+  }
+}

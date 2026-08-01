@@ -13,7 +13,21 @@ export function showConfirm({ title, message, confirmLabel, confirmClass = 'btn-
     </div>
   </div>`;
   document.body.appendChild(overlay);
-  overlay.querySelector('#dialog-cancel').addEventListener('click', () => overlay.remove());
-  overlay.querySelector('#dialog-confirm').addEventListener('click', () => { overlay.remove(); onConfirm(); });
-  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => overlay.classList.add('show'));
+  });
+
+  let closed = false;
+  const close = () => {
+    if (closed) return;
+    closed = true;
+    overlay.classList.add('closing');
+    overlay.classList.remove('show');
+    overlay.addEventListener('transitionend', () => overlay.remove(), { once: true });
+  };
+
+  overlay.querySelector('#dialog-cancel').addEventListener('click', close);
+  overlay.querySelector('#dialog-confirm').addEventListener('click', () => { close(); onConfirm(); });
+  overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
 }

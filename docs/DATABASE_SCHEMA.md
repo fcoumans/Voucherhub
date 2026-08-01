@@ -18,10 +18,16 @@ The database supports:
 - Voucher photo/file storage
 
 This document is generated from the live schema (Supabase project `ynlsrbtzcarjsqnldqyc`,
-last verified 2026-07-27) — not from `supabase/migrations.sql`, which only tracks a
+last verified 2026-07-30) — not from `supabase/migrations.sql`, which only tracks a
 subset of tables and has drifted from what's actually deployed. If the two disagree,
 the database is correct and `migrations.sql` should be treated as best-effort history,
-not a source of truth.
+not a source of truth. As of 2026-07-30 there's also `supabase/schema.sql`, a
+consolidated snapshot generated directly from live catalog introspection — closer to
+this document's source of truth than `migrations.sql` is, and the place to check first
+if the two ever disagree. New individual migrations going forward live under
+`supabase/migrations/` (see the README there for the naming convention); the prior
+~47 migrations remain tracked only in the project's remote migration history, not as
+local files.
 
 ---
 
@@ -272,6 +278,41 @@ Source of truth for brand logos, categories, and autocomplete suggestions across
 | created_by | UUID | FK → users.id, set null on delete |
 | created_at | Timestamp | Auto-generated |
 
+`brands` is a shared/global catalog, not per-user owned — the `brands_update` RLS
+policy is `USING (true) WITH CHECK (true)` (any authenticated user can attempt an
+update on any row), because `ensureBrand()` in `src/app.js` and the `enrich-brand`
+edge function both legitimately correct/backfill brands they didn't create (category
+correction; a one-time description backfill). Since RLS is row-level only, it can't
+restrict *which columns* change — a `brands_guard_update` trigger (see Functions
+below) enforces that boundary instead: only `category` (any time) and `description`
+(once, from `NULL`) may actually change on a row the caller doesn't own; `name`,
+`domain`, `logo_url`, `created_by`, and `created_at` are immutable to non-owners.
+
+---
+
+## public_profiles (view)
+
+A `SECURITY DEFINER` view over `users` (joined with `marketplace_listings` for a sold-count).
+It's the app's cross-user directory — the only way one user's client ever sees another
+user's name/email: marketplace seller contact info, the friends list, pending friend
+requests, and add-friend-by-email lookup all query this view, never `public.users`
+directly.
+
+| Field | Type | Notes |
+|---|---|---|
+| id | UUID | `users.id` |
+| email | String | `users.email` |
+| first_name | String | `users.first_name` |
+| last_name | String | `users.last_name` |
+| vouchers_sold | Integer | `count(marketplace_listings.id) FILTER (WHERE status = 'sold')` for that seller |
+
+`users` RLS is self-only (`auth.uid() = id`), so a plain (`security_invoker`) view would
+return zero rows for anyone but the caller — breaking every feature listed above. The
+`SECURITY DEFINER` property is deliberate, not an oversight, and is scoped by: no
+columns beyond the five above, and `SELECT` granted to `authenticated` only, never
+`anon`/`PUBLIC`. Both the reasoning and the grant boundary are recorded in a
+`COMMENT ON VIEW` on the live object, not just here.
+
 ---
 
 ## discovery_brands
@@ -308,10 +349,11 @@ Indexed on `regions` (GIN, for the region filter) and `(is_active, sort_order)`.
 | `handle_new_user()` | Trigger (`on_auth_user_created` on `auth.users`) | Creates the matching `public.users` row on signup, title-casing first/last name from signup metadata |
 | `sync_referral_used_count()` | Trigger (`referral_code_uses_sync` on `referral_code_uses`) | Keeps `referral_codes.used_count` in sync on insert/delete |
 | `trusted_network_ids(p_user uuid)` | RPC, `SECURITY DEFINER`, `EXECUTE` granted to `authenticated` only | Returns a user's 1st- and 2nd-degree friend network (friends + friends of friends). Bypasses `friendships` RLS internally (which only lets a user read rows they're a party to — that blocks a plain 2-hop join) and is guarded to only ever compute the caller's own network. Used both by `marketplace_listings`' RLS policy and directly by the client for the Trusted Community tab |
-| `claim_voucher_gift(p_gift_id uuid)` | RPC, `SECURITY DEFINER`, `EXECUTE` granted to `authenticated` only | Atomically transfers a gifted voucher (and its files) to the claiming user, marks the gift claimed, and auto-creates a friendship between sender and claimer if none exists |
+| `claim_voucher_gift(p_gift_id uuid)` | RPC, `SECURITY DEFINER`, `EXECUTE` granted to `authenticated` only | Atomically transfers a gifted voucher (and its files) to the claiming user, marks the gift claimed, and auto-creates a friendship between sender and claimer if none exists. Every row it writes is derived server-side from the single `voucher_gifts` row matched by `p_gift_id`, never taken directly from other caller input — scope confirmed via `COMMENT ON FUNCTION` on the live object |
+| `brands_guard_update()` | Trigger (`brands_guard_update_trg`, `BEFORE UPDATE` on `brands`) | Column-level guard the `brands_update` RLS policy can't express on its own (RLS is row-level only) — restricts a non-owner update to `category` and a one-time `description` backfill; see `brands` above |
 | `rls_auto_enable()` | Event trigger (`ensure_rls`, project-level) | Supabase-platform safety net that auto-enables RLS on any newly created `public` table. Not app-specific — don't remove it thinking it's dead |
 
-All five `SECURITY DEFINER` functions in this table had `EXECUTE` granted to `PUBLIC` (Postgres's default on function creation, which includes the unauthenticated `anon` role) until an auth security review revoked it — see Cleanup History below. `claim_voucher_gift` and `trusted_network_ids` now grant `EXECUTE` to `authenticated` only; the three trigger/event-trigger functions grant it to nobody (Postgres refuses direct calls to trigger functions regardless of grants, so they only ever run via their triggers).
+The two `SECURITY DEFINER` RPCs (`claim_voucher_gift`, `trusted_network_ids`) had `EXECUTE` granted to `PUBLIC` (Postgres's default on function creation, which includes the unauthenticated `anon` role) until an auth security review revoked it — see Cleanup History below. Both now grant `EXECUTE` to `authenticated` only; the trigger/event-trigger functions grant it to nobody (Postgres refuses direct calls to trigger/event-trigger functions regardless of grants, so they only ever run via their triggers). `trusted_network_ids` also gained a `COMMENT ON FUNCTION` confirming it as read-only.
 
 ## Scheduled jobs (pg_cron)
 
@@ -469,13 +511,45 @@ pending a deliberate decision to drop them): `vouchers.remaining_amount`,
   `resetPasswordForEmail`/`emailRedirectTo` URLs are built from `window.location.origin`
   (not user-controllable), so there's no open-redirect vector in app code.
 - **Not fixed here — requires the Supabase Dashboard, no MCP tool access to Auth config:**
-  leaked-password-protection is confirmed disabled (flagged by the security advisor);
-  server-side minimum password length and complexity rules should be raised to match or
-  exceed the client-side minimum (client checks alone don't stop a direct API call);
-  Auth rate limits should be reviewed; CAPTCHA (hCaptcha/Turnstile) on signup/login would
-  meaningfully harden brute-force/bot resistance but requires a third-party account and
-  real implementation, not a toggle; confirm the Auth "Redirect URLs" allow-list only
-  includes intended domains.
+  leaked-password-protection is confirmed disabled (flagged by the security advisor) —
+  as of 2026-07-30, also confirmed **blocked at the plan level**: the org is on the Free
+  plan, and leaked-password protection requires Pro or above, so the toggle isn't even
+  available yet regardless of dashboard access; server-side minimum password length and
+  complexity rules should be raised to match or exceed the client-side minimum (client
+  checks alone don't stop a direct API call); Auth rate limits should be reviewed;
+  CAPTCHA (hCaptcha/Turnstile) on signup/login would meaningfully harden brute-force/bot
+  resistance but requires a third-party account and real implementation, not a toggle;
+  confirm the Auth "Redirect URLs" allow-list only includes intended domains.
 - **Flagged, not changed (product judgment call):** signup reveals "this email is
   already registered" for a duplicate email — real UX value, but a textbook
   user-enumeration signal. Left as-is pending a product decision.
+
+**2026-07-30, security advisor follow-up:**
+
+- **`brands_update` RLS tightened.** Decision: column-scoped, not owner-only or
+  admin-only — `ensureBrand()` and `enrich-brand` both need to correct/backfill brands
+  they don't own, and no admin role exists in the app, so both of the stricter options
+  would have broken live functionality. The RLS policy itself is unchanged
+  (`USING (true) WITH CHECK (true)`); a new `brands_guard_update` trigger enforces the
+  real boundary (see `brands` and Functions above).
+- **`public_profiles`'s `SECURITY DEFINER` reviewed and kept, not converted** — `users`
+  RLS is self-only, so a plain view would break every cross-user lookup that depends on
+  it. Hardened with an explicit `security_invoker = false`, explicit
+  `REVOKE ALL ... FROM anon/PUBLIC`, and a `COMMENT ON VIEW` recording the justification
+  (see `public_profiles` above).
+- **`claim_voucher_gift` and `trusted_network_ids` scope confirmed and documented** —
+  each now carries a `COMMENT ON FUNCTION` on the live object spelling out exactly what
+  it's allowed to touch on another user's behalf and why it can't be used for anything
+  broader (see Functions above).
+- **Performance advisor's 44 `auth_rls_initplan` warnings fixed** — every flagged
+  policy rewritten from `auth.uid()` to `(select auth.uid())` via `ALTER POLICY` (text
+  changed only, not policy identity/roles), verified to preserve logic exactly
+  (textual diff against the originals, plus empirical spot-checks comparing RLS-filtered
+  results against manually-written reference queries). Advisor confirms 0 remaining.
+- **Performance advisor's 14 unused-index warnings reviewed, none dropped** — every one
+  either backs a foreign key (cascade/set-null performance) or is the exact column an
+  RLS policy filters on, on tables with only single-digit-to-dozens of rows; "unused" at
+  this size reflects the planner always preferring a seq scan over an index scan on a
+  tiny table, not a design mistake. Worth re-checking once real usage volume builds up.
+- **Leaked-password protection: still not enabled** — no Supabase MCP tool exposes Auth
+  config, and it's blocked at the plan level regardless (see above).

@@ -1,5 +1,11 @@
 -- ============================================================
 -- Voucher Hub — Supabase migration (idempotent, run in SQL Editor)
+--
+-- This file is the annotated narrative history of this project's early
+-- schema changes (the "why", not just the "what"). For a new engineer who
+-- wants the current end state without reading this whole history, see
+-- ../schema.sql. New individual migrations going forward live in
+-- ./migrations/ following the convention described in ./migrations/README.md.
 -- ============================================================
 
 -- ============================================================
@@ -45,6 +51,46 @@ CREATE POLICY "brands_insert" ON public.brands
 
 CREATE POLICY "brands_update" ON public.brands
   FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
+
+-- RLS is row-level only -- it can't restrict which COLUMNS change, and
+-- ensureBrand()/enrich-brand both legitimately need to update brands they
+-- don't own (category correction; one-time description backfill). A
+-- BEFORE UPDATE trigger enforces the column-level boundary that RLS
+-- can't: only `category` (any time) and `description` (once, from NULL)
+-- may differ from the existing row for a non-owner update.
+CREATE OR REPLACE FUNCTION public.brands_guard_update()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = public
+AS $$
+BEGIN
+  IF NEW.id IS DISTINCT FROM OLD.id
+     OR NEW.name IS DISTINCT FROM OLD.name
+     OR NEW.domain IS DISTINCT FROM OLD.domain
+     OR NEW.logo_url IS DISTINCT FROM OLD.logo_url
+     OR NEW.created_by IS DISTINCT FROM OLD.created_by
+     OR NEW.created_at IS DISTINCT FROM OLD.created_at
+  THEN
+    RAISE EXCEPTION 'brands: only category and description (once) may be updated'
+      USING ERRCODE = '42501';
+  END IF;
+
+  IF NEW.description IS DISTINCT FROM OLD.description AND OLD.description IS NOT NULL THEN
+    RAISE EXCEPTION 'brands: description can only be set once, not overwritten'
+      USING ERRCODE = '42501';
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS brands_guard_update_trg ON public.brands;
+CREATE TRIGGER brands_guard_update_trg
+BEFORE UPDATE ON public.brands
+FOR EACH ROW EXECUTE FUNCTION public.brands_guard_update();
+
+COMMENT ON TRIGGER brands_guard_update_trg ON public.brands IS
+  'Column-level guard for brands_update RLS policy (USING(true)/WITH CHECK(true)): only category and a one-time description backfill may change on a row the caller does not own.';
 
 -- ============================================================
 -- public.users  (profile lookup for friend-by-email)
@@ -325,9 +371,24 @@ FROM public.users u
 LEFT JOIN public.marketplace_listings ml ON ml.seller_id = u.id
 GROUP BY u.id, u.email, u.first_name, u.last_name;
 
+-- Deliberately SECURITY DEFINER (the default for views unless
+-- security_invoker is set true): public.users RLS is self-only
+-- (auth.uid() = id), so a security_invoker view would return zero rows
+-- for anyone but the caller — breaking every one of the cross-user
+-- lookups this view exists for (marketplace seller contact, friends
+-- list, pending friend requests, add-friend-by-email). Scope is bounded
+-- by exposing only id/email/first_name/last_name/vouchers_sold and by
+-- granting SELECT to authenticated only, never anon/PUBLIC.
+ALTER VIEW public.public_profiles SET (security_invoker = false);
+
 -- Recreating the view above drops its prior grants — reinstate SELECT for
--- the app's client role.
+-- the app's client role, and explicitly deny anon/PUBLIC.
+REVOKE ALL ON public.public_profiles FROM PUBLIC;
+REVOKE ALL ON public.public_profiles FROM anon;
 GRANT SELECT ON public.public_profiles TO authenticated;
+
+COMMENT ON VIEW public.public_profiles IS
+  'Cross-user directory (marketplace seller contact, friends list, pending requests, add-friend-by-email) exposing id/email/first_name/last_name/vouchers_sold for ANY user. Deliberately SECURITY DEFINER: public.users RLS is self-only (auth.uid() = id), so a security_invoker view would return zero rows for anyone but the caller, breaking all of the above. Scope is bounded by: (a) no columns beyond the five listed, (b) SELECT granted only to authenticated, never anon/PUBLIC.';
 
 -- ============================================================
 -- public.referral_codes
@@ -577,6 +638,9 @@ $$;
 REVOKE EXECUTE ON FUNCTION public.trusted_network_ids(UUID) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.trusted_network_ids(UUID) TO authenticated;
 
+COMMENT ON FUNCTION public.trusted_network_ids(UUID) IS
+  'SECURITY DEFINER, read-only. Returns the 1st- and 2nd-degree accepted-friendship network of p_user. Self-guarded: every branch of the CTE requires p_user = auth.uid(), so passing any id other than the caller''s own returns an empty set -- it cannot be used to enumerate another user''s network. Touches no data beyond SELECTs on public.friendships; performs no writes.';
+
 -- Public-visibility SELECT policy, named "Anyone can view public available
 -- listings" on the live project (kept as-is rather than renamed, since it's
 -- user-facing-adjacent and already referenced in dashboard audit history).
@@ -823,6 +887,9 @@ $$;
 -- change. Discovered and fixed as part of an auth security review.
 REVOKE EXECUTE ON FUNCTION public.claim_voucher_gift(UUID) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.claim_voucher_gift(UUID) TO authenticated;
+
+COMMENT ON FUNCTION public.claim_voucher_gift(UUID) IS
+  'SECURITY DEFINER. On behalf of the caller, claims exactly one public.voucher_gifts row: the one matching p_gift_id, only if status=''pending'', unexpired, and sender_id <> auth.uid(). All row targets for the writes below (voucher_id, voucher_files.voucher_id, the gift row itself, the sender for the new friendship) are derived server-side from that single looked-up row -- never taken directly from caller input beyond p_gift_id -- so the function cannot be parameterized to touch any voucher, file, or gift outside that one validated transfer. Writes: reassigns public.vouchers.user_id and public.voucher_files.user_id for that voucher to auth.uid(); marks the gift ''claimed''; inserts one accepted public.friendships row between sender and claimer if none exists.';
 
 -- ============================================================
 -- storage.objects policies for the voucher-photos bucket

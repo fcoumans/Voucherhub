@@ -8,7 +8,7 @@
 // helpers from './views.js' (a same-feature, one-directional import).
 import { supabase } from '../../lib/supabase.js';
 import { state, CATEGORIES } from '../../core/state.js';
-import { esc } from '../../core/dom.js';
+import { esc, mountOverlay, closeOverlay } from '../../core/dom.js';
 import { showToast } from '../../core/toast.js';
 import { icon } from '../../core/ui.js';
 import { go } from '../../core/router.js';
@@ -395,12 +395,13 @@ export function showAddVoucherMenu() {
     <input type="file" id="menu-file-input" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,application/pdf" multiple style="display:none">
   </div>`;
   document.body.appendChild(overlay);
+  mountOverlay(overlay);
 
   const staged = []; // [{ file, mimeType, previewUrl }]
 
   const closeMenu = () => {
     staged.forEach(s => s.previewUrl && URL.revokeObjectURL(s.previewUrl));
-    overlay.remove();
+    closeOverlay(overlay);
   };
   overlay.addEventListener('click', e => { if (e.target === overlay) closeMenu(); });
   overlay.querySelector('#menu-manual-entry').addEventListener('click', () => { closeMenu(); go('voucher-form'); });
@@ -434,7 +435,7 @@ export function showAddVoucherMenu() {
     if (!staged.length) return;
     const fileEntries = staged.map(({ file, mimeType }) => ({ file, mimeType }));
     staged.forEach(s => s.previewUrl && URL.revokeObjectURL(s.previewUrl)); // the raw File objects live on in fileEntries; only this menu's own preview URLs go
-    overlay.remove();
+    closeOverlay(overlay);
     startVoucherScan(fileEntries);
   });
 

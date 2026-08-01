@@ -48,3 +48,29 @@ export const formatCurrency = (amount, currency = 'EUR', showDecimals = true) =>
 export const normalizeAmount = (str) => String(str ?? '').trim().replace(',', '.');
 
 export const formData = (form) => Object.fromEntries(new FormData(form));
+
+// Shared bottom-sheet mount/close pair for every `.overlay`/`.dialog` popup
+// (confirm dialog, add-voucher menu, gift share screen). `.overlay`/`.dialog`
+// render off-screen by default (see style.css) so the transition has
+// somewhere to animate from — `.show` must be added on a later frame than
+// the insert, or the browser coalesces both styles into one paint and the
+// transition never runs.
+export function mountOverlay(overlay) {
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => overlay.classList.add('show'));
+  });
+}
+
+export function closeOverlay(overlay, after) {
+  if (overlay.dataset.closing) return;
+  overlay.dataset.closing = 'true';
+  overlay.classList.add('closing');
+  overlay.classList.remove('show');
+  const onEnd = (e) => {
+    if (e.target !== overlay) return;
+    overlay.removeEventListener('transitionend', onEnd);
+    overlay.remove();
+    after?.();
+  };
+  overlay.addEventListener('transitionend', onEnd);
+}

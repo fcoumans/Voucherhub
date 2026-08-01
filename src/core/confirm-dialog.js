@@ -1,4 +1,4 @@
-import { esc } from './dom.js';
+import { esc, mountOverlay, closeOverlay } from './dom.js';
 
 export function showConfirm({ title, message, confirmLabel, confirmClass = 'btn-danger', onConfirm }) {
   const overlay = document.createElement('div');
@@ -13,20 +13,9 @@ export function showConfirm({ title, message, confirmLabel, confirmClass = 'btn-
     </div>
   </div>`;
   document.body.appendChild(overlay);
+  mountOverlay(overlay);
 
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => overlay.classList.add('show'));
-  });
-
-  let closed = false;
-  const close = () => {
-    if (closed) return;
-    closed = true;
-    overlay.classList.add('closing');
-    overlay.classList.remove('show');
-    overlay.addEventListener('transitionend', () => overlay.remove(), { once: true });
-  };
-
+  const close = () => closeOverlay(overlay);
   overlay.querySelector('#dialog-cancel').addEventListener('click', close);
   overlay.querySelector('#dialog-confirm').addEventListener('click', () => { close(); onConfirm(); });
   overlay.addEventListener('click', e => { if (e.target === overlay) close(); });

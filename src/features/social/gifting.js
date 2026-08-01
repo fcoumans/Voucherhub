@@ -5,7 +5,7 @@
 // since the gift-reveal card renders a voucher the same way the wallet does.
 import { supabase } from '../../lib/supabase.js';
 import { state } from '../../core/state.js';
-import { esc } from '../../core/dom.js';
+import { esc, mountOverlay, closeOverlay } from '../../core/dom.js';
 import { showToast } from '../../core/toast.js';
 import { icon } from '../../core/ui.js';
 import { go } from '../../core/router.js';
@@ -70,8 +70,9 @@ export async function showGiftShareScreen(giftId, voucher) {
     </div>
   </div>`;
   document.body.appendChild(overlay);
+  mountOverlay(overlay);
 
-  const closeAndGo = () => { overlay.remove(); go('pending-gifts'); };
+  const closeAndGo = () => closeOverlay(overlay, () => go('pending-gifts'));
   overlay.querySelector('#gift-done-btn').addEventListener('click', closeAndGo);
   overlay.addEventListener('click', e => { if (e.target === overlay) closeAndGo(); });
 

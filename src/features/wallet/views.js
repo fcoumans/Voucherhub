@@ -1,14 +1,14 @@
 // Home dashboard, wallet list, voucher form (add/edit), and voucher detail
-// — including the inline Sell/Gift/Reminder action buttons and forms on the
-// detail page (their submit handlers live in app.js's event listeners for
-// now; this module only renders the markup).
+// — including the inline Sell/Gift action buttons and forms on the detail
+// page (their submit handlers live in app.js's event listeners for now;
+// this module only renders the markup).
 //
 import { state, CATEGORIES } from '../../core/state.js';
 import { esc, daysUntil, formatDate, formatCurrency, initial } from '../../core/dom.js';
 import { icon, avatar, renderHeader, renderBottomNav, navIcons, brandAutocomplete } from '../../core/ui.js';
+import { categoryBadge, categoryFilterDropdown } from '../../core/categories.js';
 import { voucherFormState } from './voucher-form-state.js';
-import { formatVoucherValue, getStatus, formatMonthYear, STATUS_LABEL, STATUS_CLASS } from './vouchers.js';
-import { nowDateTimeLocalStr, defaultReminderDateTimeStr } from '../notifications/reminders.js';
+import { formatVoucherValue, getStatus, formatMonthYear, formatFullDate, STATUS_LABEL, STATUS_CLASS } from './vouchers.js';
 
 const badge = (status) =>
   `<span class="badge ${STATUS_CLASS[status] || 'badge-gray'}">${STATUS_LABEL[status] || esc(status)}</span>`;
@@ -18,6 +18,88 @@ const badge = (status) =>
 // round caps) consistent with the rest of the icon system, not a unicode
 // glyph standing in for one.
 const closeIcon = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
+
+// Authored warning-triangle glyph for the home "Expiring soon" alert card.
+const warningIcon = `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`;
+
+// Trending-up glyph for the home "Portfolio" card header.
+const trendingUpIcon = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>`;
+
+// Dark-to-light Emerald Sea ramp for the portfolio donut, assigned by rank
+// (largest category first) so the chart always reads darkest-to-lightest.
+const PORTFOLIO_RAMP = ['#3AAE9C', '#5CC2AE', '#7ED3C0', '#A3E0D0', '#C4EBE0', '#DFF5EE'];
+
+// Category breakdown donut + legend for the home "Portfolio" card — grouped
+// from the same active+expiring vouchers the stats banner totals up.
+function portfolioCard(vouchers, total) {
+  const byCategory = new Map();
+  for (const v of vouchers) {
+    const cat = v.category || 'Other';
+    const amount = parseFloat((v.balance ?? v.value) || 0);
+    byCategory.set(cat, (byCategory.get(cat) || 0) + amount);
+  }
+  const data = [...byCategory.entries()]
+    .map(([label, value]) => ({ label, value }))
+    .sort((a, b) => b.value - a.value)
+    .map((d, i) => ({ ...d, color: PORTFOLIO_RAMP[i % PORTFOLIO_RAMP.length] }));
+
+  // Equal-width gap at every boundary, including the seam where the last
+  // slice meets the first (split as a half-gap at 0% and a half-gap at
+  // 100% so it reads the same as the internal gaps once the ring closes).
+  const n = data.length;
+  const gapPct = n > 1 ? 0.6 : 0;
+  const available = 100 - n * gapPct;
+  const stops = [];
+  let p = gapPct / 2;
+  if (gapPct > 0) stops.push(`transparent 0% ${p}%`);
+  data.forEach((d, i) => {
+    const width = (d.value / total) * available;
+    const segEnd = p + width;
+    stops.push(`${d.color} ${p}% ${segEnd}%`);
+    p = segEnd;
+    if (i < n - 1) {
+      const gapEnd = p + gapPct;
+      stops.push(`transparent ${p}% ${gapEnd}%`);
+      p = gapEnd;
+    } else if (gapPct > 0) {
+      stops.push(`transparent ${p}% 100%`);
+    }
+  });
+
+  return `
+  <div class="portfolio-card">
+    <div class="portfolio-header">
+      <h3 class="section-title"><span style="color:var(--primary);display:inline-flex">${trendingUpIcon}</span> Portfolio</h3>
+      <span class="portfolio-total">€${total.toLocaleString('nl-NL', { maximumFractionDigits: 0 })} total</span>
+    </div>
+    <div class="portfolio-body">
+      <div class="donut" style="background:conic-gradient(${stops.join(', ')})"></div>
+      <div class="donut-legend">
+        ${data.map(d => `
+        <div class="donut-legend-row">
+          <span class="donut-dot" style="background:${d.color}"></span>
+          <span class="donut-legend-label">${esc(d.label)}</span>
+          <span class="donut-legend-value">€${d.value.toLocaleString('nl-NL', { maximumFractionDigits: 0 })}</span>
+        </div>`).join('')}
+      </div>
+    </div>
+  </div>`;
+}
+
+// Compact alert-row used for the single most urgent expiring voucher on the
+// home banner — distinct from the fuller voucherCard used in wallet lists.
+function expiringAlertCard(v) {
+  const displayAmount = v.balance != null ? v.balance : v.value;
+  return `
+  <div class="expiring-alert" data-nav="voucher-detail" data-id="${esc(v.id)}">
+    <div class="expiring-alert-icon">${warningIcon}</div>
+    <div class="expiring-alert-body">
+      <div class="expiring-alert-title">Expiring soon</div>
+      <div class="expiring-alert-sub">${esc(v.brand)} • ${formatVoucherValue(v, displayAmount, false)}${v.expiryDate ? ` expires ${formatMonthYear(v.expiryDate)}` : ''}</div>
+    </div>
+    <button class="expiring-alert-cta" data-nav="voucher-detail" data-id="${esc(v.id)}">Use now</button>
+  </div>`;
+}
 
 /* ============================================================
    VIEW: HOME
@@ -32,23 +114,24 @@ export function viewHome() {
   const greeting  = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
 
   return `
-  ${renderHeader('VoucherWise')}
-  <main class="content">
-    <div class="home-header">
+  <div class="home-hero">
+    <div class="home-hero-top">
       <div>
         <p class="greeting">${greeting},</p>
         <h2>${esc(state.currentUser.name.split(' ')[0])}</h2>
       </div>
-      <button class="btn-icon" data-nav="profile" style="border-radius:50%;position:relative">
-        <div class="avatar" style="background:linear-gradient(150deg,#D6710A 0%,#F98513 100%);width:38px;height:38px;font-size:15px">
-          ${esc(initial(state.currentUser.name))}
-        </div>
-        ${state.pendingRequests.length > 0 ? `<span style="position:absolute;top:-2px;right:-2px;width:10px;height:10px;background:var(--danger);border-radius:50%;border:1.5px solid #fff"></span>` : ''}
-      </button>
+      <div class="home-hero-actions">
+        <button class="hero-icon-btn" data-nav="notifications" aria-label="Notifications">
+          ${icon.bell}
+          ${state.pendingRequests.length > 0 || state.activityNotifications.some(n => !n.read) ? `<span class="hero-dot"></span>` : ''}
+        </button>
+        <button class="hero-icon-btn" data-nav="profile" aria-label="Profile">
+          <span class="hero-avatar-initial">${esc(initial(state.currentUser.name))}</span>
+        </button>
+      </div>
     </div>
 
-
-    <div class="stats-card">
+    <div class="home-hero-stats">
       <div class="stat">
         <span class="stat-value">${active.length + expiring.length}</span>
         <span class="stat-label">Active</span>
@@ -60,27 +143,26 @@ export function viewHome() {
       </div>
       <div class="stat-divider"></div>
       <div class="stat">
-        <span class="stat-value ${expiring.length > 0 ? 'text-warning' : ''}">${expiring.length}</span>
+        <span class="stat-value">${expiring.length}</span>
         <span class="stat-label">Expiring</span>
       </div>
     </div>
+  </div>
 
+  <main class="content content--home">
     ${expiring.length > 0 ? `
     <section class="home-section">
-      <h3 class="section-title">${icon.clock} Expiring Soon</h3>
-      <div class="voucher-list" style="margin-top:10px">
-        ${expiring.map(v => voucherCard(v)).join('')}
+      <div class="voucher-list" style="margin-top:0">
+        ${expiring.map(v => expiringAlertCard(v)).join('')}
       </div>
     </section>
     ` : ''}
 
     <section class="home-section">
-      <h3 class="section-title">Quick Actions</h3>
+      <h3 class="section-title-caps">Quick Actions</h3>
       <div class="quick-actions" style="margin-top:10px">
         <button class="quick-action" data-action="add-voucher-menu">
-          <div class="qa-icon">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/><line x1="12" y1="14" x2="12" y2="18"/><line x1="10" y1="16" x2="14" y2="16"/></svg>
-          </div>
+          <div class="qa-icon">${icon.plus}</div>
           <span>Add Voucher</span>
         </button>
         <button class="quick-action" data-nav="marketplace">
@@ -89,19 +171,25 @@ export function viewHome() {
           </div>
           <span>Marketplace</span>
         </button>
-        <button class="quick-action" data-nav="friends">
+        <button class="quick-action" data-nav="referrals">
           <div class="qa-icon">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>
           </div>
-          <span>Friends</span>
+          <span>Referrals</span>
         </button>
       </div>
     </section>
 
+    ${total > 0 ? `
+    <section class="home-section">
+      ${portfolioCard([...active, ...expiring], total)}
+    </section>
+    ` : ''}
+
     ${active.length > 0 ? `
     <section class="home-section">
       <div class="section-header">
-        <h3 class="section-title">My Wallet</h3>
+        <h3 class="section-title-caps">My Wallet</h3>
         <button class="link-btn" data-nav="vouchers">See all</button>
       </div>
       <div class="voucher-list">
@@ -146,31 +234,59 @@ export function voucherCard(v, isGifted) {
     ${avatar(v.brand)}
     <div class="vc-info">
       <div class="vc-brand">${esc(v.brand)}</div>
-      <div class="vc-code">${v.code ? '•••• ' + esc(v.code.slice(-4)) : '<span style="opacity:0.5">No code</span>'}</div>
-      ${isGifted ? `<div class="vc-listed-hint">Tap to manage gift</div>`
+      <div class="vc-meta" style="margin-top:3px">${expiryMeta}</div>
+      <div class="vc-hint-slot">${isGifted ? `<div class="vc-listed-hint">Tap to manage gift</div>`
         : s === 'listed' ? `<div class="vc-listed-hint">Tap to unlist</div>`
-        : v.giftMessage || v.giftSender ? `<div class="vc-note-hint">💌 Has a note</div>` : ''}
+        : v.giftMessage ? `<div class="vc-note-hint">${esc(v.giftMessage)}</div>`
+        : v.giftSender ? `<div class="vc-note-hint">From ${esc(v.giftSender)}</div>` : ''}</div>
     </div>
     <div class="vc-right">
       <div class="vc-value${v.valueDescription ? ' vc-value-text' : ''}">${formatVoucherValue(v, displayAmount, false)}</div>
-      <div class="vc-meta">${expiryMeta}</div>
-      ${v.expiryDate ? `<div style="font-size:0.7rem;color:var(--text-muted);margin-top:2px">${formatMonthYear(v.expiryDate)}</div>` : ''}
+      <div class="vc-category-slot">${v.category ? categoryBadge(v.category) : ''}</div>
+      <div class="vc-expiry-slot">${v.expiryDate ? formatFullDate(v.expiryDate) : ''}</div>
+    </div>
+  </div>`;
+}
+
+// Compact card for a sent gift a friend has already claimed. The voucher
+// itself has transferred away (claim_voucher_gift reassigns its user_id), so
+// unlike voucherCard() this renders from the send-time snapshot columns on
+// the gift row rather than a live voucher object — and isn't tappable, since
+// there's nothing left here to manage (see fetchSentGifts).
+function claimedGiftCard(g) {
+  return `
+  <div class="voucher-card status-active" style="cursor:default">
+    ${avatar(g.voucher_brand)}
+    <div class="vc-info">
+      <div class="vc-brand">${esc(g.voucher_brand)}</div>
+      <div class="vc-listed-hint">Claimed by your friend</div>
+    </div>
+    <div class="vc-right">
+      <div class="vc-value${g.voucher_value_description ? ' vc-value-text' : ''}">${g.voucher_value_description ? esc(g.voucher_value_description) : formatCurrency(g.voucher_value, g.voucher_currency, false)}</div>
+      <div class="vc-meta"><span class="text-xs" style="color:var(--accent)">${icon.gift} Gifted</span></div>
     </div>
   </div>`;
 }
 
 export function viewVouchers() {
-  const q      = state.searchQuery.toLowerCase();
-  const filter = state.activeFilter;
-  const sort   = state.activeSort;
+  const q       = state.searchQuery.toLowerCase();
+  const filter  = state.activeFilter;
+  const sort    = state.activeSort;
+  const catFilter = state.walletCategoryFilter || 'All';
   // Vouchers with a pending gift are hidden from the normal wallet — they
   // live in the Pending Gifts list until claimed or cancelled.
   const giftedIds = new Set(state.pendingGifts.map(g => g.voucher_id));
+  // Sent gifts a friend has already claimed — ownership has since
+  // transferred (claim_voucher_gift), so these are no longer in
+  // state.vouchers at all; rendered from their send-time snapshot instead.
+  let claimedGifts = state.sentGifts.filter(g => g.status === 'claimed');
   let vouchers = filter === 'gifted'
     ? state.vouchers.filter(v => giftedIds.has(v.id))
     : state.vouchers.filter(v => !giftedIds.has(v.id));
 
   if (q) vouchers = vouchers.filter(v => v.brand.toLowerCase().includes(q) || (v.code||'').toLowerCase().includes(q));
+  if (q) claimedGifts = claimedGifts.filter(g => (g.voucher_brand||'').toLowerCase().includes(q));
+  if (catFilter !== 'All') vouchers = vouchers.filter(v => (v.category || 'Other') === catFilter);
   if (filter !== 'all' && filter !== 'gifted') vouchers = vouchers.filter(v => {
     const s = getStatus(v);
     if (filter === 'active') return s === 'active' || s === 'expiring';
@@ -204,7 +320,7 @@ export function viewVouchers() {
   }
 
   const allV   = state.vouchers.filter(v => !giftedIds.has(v.id));
-  const counts = { all: allV.length, active: 0, expiring: 0, expired: 0, used: 0, listed: 0, gifted: giftedIds.size };
+  const counts = { all: allV.length, active: 0, expiring: 0, expired: 0, used: 0, listed: 0, gifted: giftedIds.size + state.sentGifts.filter(g => g.status === 'claimed').length };
   allV.forEach(v => {
     const s = getStatus(v);
     if (s === 'active' || s === 'expiring') {
@@ -223,12 +339,12 @@ export function viewVouchers() {
 
     ${state.pendingGifts.length > 0 ? `
     <button type="button" class="pending-gifts-pill" data-nav="pending-gifts">
-      ${icon.gift} ${state.pendingGifts.length} pending gift${state.pendingGifts.length !== 1 ? 's' : ''}, waiting to be claimed
+      ${icon.gift} ${state.pendingGifts.length} gift${state.pendingGifts.length !== 1 ? 's' : ''} sent, waiting to be claimed
     </button>
     ` : ''}
 
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
-      <div class="filter-chips" style="flex:1;margin-bottom:0">
+    <div class="wallet-filter-row">
+      <select class="sort-select" data-status-select>
         ${[
           { id: 'all',      label: `All (${counts.all})` },
           { id: 'active',   label: `Active (${counts.active})` },
@@ -237,21 +353,29 @@ export function viewVouchers() {
           { id: 'used',     label: `Used (${counts.used})` },
           { id: 'listed',   label: `Listed (${counts.listed})` },
           { id: 'gifted',   label: `Gifted (${counts.gifted})` },
-        ].map(f => `<button class="chip ${filter === f.id ? 'active' : ''}" data-filter="${f.id}">${f.label}</button>`).join('')}
-      </div>
-      <select class="sort-select" data-sort title="Sort">
+        ].map(f => `<option value="${f.id}" ${filter===f.id?'selected':''}>${f.label}</option>`).join('')}
+      </select>
+      ${categoryFilterDropdown(['All', ...CATEGORIES], catFilter, 'wallet-cat', { style: 'flex:1' })}
+    </div>
+
+    <div class="wallet-sort-row">
+      <span class="wallet-sort-icon">${icon.sort}</span>
+      <select class="sort-select sort-select-quiet" data-sort>
         <option value="expiry" ${sort==='expiry'?'selected':''}>Soonest expiry</option>
         <option value="value"  ${sort==='value'?'selected':''}>Highest value</option>
         <option value="added"  ${sort==='added'?'selected':''}>Newest</option>
       </select>
     </div>
 
-    ${vouchers.length > 0
-      ? `<div class="voucher-list">${vouchers.map(v => voucherCard(v, filter === 'gifted')).join('')}</div>`
+    ${vouchers.length > 0 || (filter === 'gifted' && claimedGifts.length > 0)
+      ? `<div class="voucher-list">
+          ${vouchers.map(v => voucherCard(v, filter === 'gifted')).join('')}
+          ${filter === 'gifted' ? claimedGifts.map(g => claimedGiftCard(g)).join('') : ''}
+        </div>`
       : `<div class="empty-state">
           <div class="empty-icon">${filter === 'gifted' ? icon.gift : (counts.all === 0 ? navIcons.vouchers : icon.search)}</div>
-          <h3>${filter === 'gifted' ? 'No pending gifts' : (counts.all === 0 ? 'No vouchers yet' : 'No results found')}</h3>
-          <p>${filter === 'gifted' ? 'Vouchers you gift will show here until claimed' : (counts.all === 0 ? 'Add vouchers to manage them in one place' : 'Try a different search or filter')}</p>
+          <h3>${filter === 'gifted' ? 'No gifts sent yet' : (counts.all === 0 ? 'No vouchers yet' : 'No results found')}</h3>
+          <p>${filter === 'gifted' ? 'Vouchers you gift will show here, including ones your friends have already claimed' : (counts.all === 0 ? 'Add vouchers to manage them in one place' : 'Try a different search or filter')}</p>
           ${counts.all === 0 && filter !== 'gifted' ? '<button class="btn btn-primary" data-action="add-voucher-menu">Add Your First Voucher</button>' : ''}
         </div>`
     }
@@ -310,7 +434,7 @@ function valueFieldsHtml(v) {
   const mode = v?.valueDescription ? 'description' : 'amount';
   return `
   <div class="form-group" style="margin-bottom:8px">
-    <label>Value <span style="color:var(--danger)">*</span></label>
+    <label>Value <span style="color:var(--warning)">*</span></label>
     <div class="value-mode-toggle">
       <button type="button" class="value-mode-btn ${mode === 'amount' ? 'active' : ''}" data-action="set-value-mode" data-mode="amount">€ Amount</button>
       <button type="button" class="value-mode-btn ${mode === 'description' ? 'active' : ''}" data-action="set-value-mode" data-mode="description">Describe it</button>
@@ -370,7 +494,7 @@ export function viewVoucherForm() {
       </div>
 
       <div class="form-group">
-        <label>Brand / Store <span style="color:var(--danger)">*</span></label>
+        <label>Brand / Store <span style="color:var(--warning)">*</span></label>
         ${brandAutocomplete(v?.brand || '')}
       </div>
 
@@ -460,9 +584,6 @@ export function viewVoucherDetail() {
 
   const s = getStatus(v);
   const days = v.expiryDate ? daysUntil(v.expiryDate) : null;
-  const showSellForm     = state.params.sellForm;
-  const showReminderForm = state.params.reminderForm;
-  const showDeductForm   = state.params.deductForm;
 
   let expiryInfo = 'N/A';
   if (days !== null) {
@@ -476,8 +597,6 @@ export function viewVoucherDetail() {
   const rightAction = isOwn
     ? `<button class="btn-icon" data-nav="voucher-form" data-id="${esc(id)}" title="Edit">${icon.edit}</button>`
     : '';
-
-  const activeReminder = state.reminders.find(r => r.voucherId === id && !r.dismissed);
 
   return `
   ${renderHeader(v.brand, 'vouchers', {}, rightAction)}
@@ -499,14 +618,6 @@ export function viewVoucherDetail() {
     ${v.barcodePath ? `
     <div class="barcode-display">
       <img data-path="${esc(v.barcodePath)}" alt="Barcode">
-    </div>
-    ` : ''}
-
-    ${activeReminder ? `
-    <div class="reminder-info-bar">
-      ${icon.bell}
-      <span>Reminder set for <strong>${formatDate(activeReminder.reminderDate)}</strong>${activeReminder.reminderTime ? ` at ${activeReminder.reminderTime}` : ''}</span>
-      <button class="btn-icon" data-action="dismiss-reminder" data-id="${esc(activeReminder.id)}" title="Remove reminder" style="margin-left:auto;opacity:0.6">${closeIcon}</button>
     </div>
     ` : ''}
 
@@ -534,7 +645,7 @@ export function viewVoucherDetail() {
     <p class="code-label" style="margin-top:10px">PIN</p>
     <div class="code-display">
       <span class="code-text">${esc(v.pin)}</span>
-      <button class="btn btn-secondary btn-sm" data-action="copy" data-copy="${esc(v.pin)}" data-toast="PIN copied!">${icon.copy} Copy</button>
+      <button class="btn btn-secondary btn-sm" data-action="copy" data-copy="${esc(v.pin)}" data-copied-label="PIN copied">${icon.copy} Copy</button>
     </div>
     ` : ''}
 
@@ -581,7 +692,7 @@ export function viewVoucherDetail() {
     <div class="action-row">
       ${s === 'used' || s === 'sold'
         ? `<button class="btn btn-ghost" data-action="mark-unused" data-id="${esc(id)}">${icon.undo} Mark Active</button>`
-        : `<button class="btn btn-success" data-action="mark-used" data-id="${esc(id)}">${icon.check} Mark Used</button>`
+        : `<button class="btn btn-secondary" data-action="mark-used" data-id="${esc(id)}">Mark Used</button>`
       }
       ${s === 'listed'
         ? `<button class="btn btn-ghost" data-action="unlist" data-id="${esc(id)}">${icon.tag} Remove Listing</button>`
@@ -597,81 +708,9 @@ export function viewVoucherDetail() {
 
     ${s !== 'used' && s !== 'sold' && !v.valueDescription ? `
     <div style="margin-top:10px">
-      <button class="btn btn-ghost btn-full" data-action="${showDeductForm ? 'hide-deduct' : 'show-deduct'}" data-id="${esc(id)}">
-        ${icon.tag} ${showDeductForm ? 'Cancel' : 'Deduct Amount Used'}
+      <button class="btn btn-secondary btn-full" data-action="show-deduct" data-id="${esc(id)}">
+        ${icon.tag} Deduct Amount Used
       </button>
-    </div>
-
-    ${showDeductForm ? `
-    <div class="sell-form" style="margin-top:12px">
-      <form id="form-deduct">
-        <input type="hidden" name="voucherId" value="${esc(id)}">
-        <div class="form-group">
-          <label>Amount spent (${v.currency||'EUR'}) <span style="color:var(--danger)">*</span></label>
-          <input type="text" name="amount" placeholder="e.g. 12,50" required autofocus>
-          <span class="form-hint">Remaining: ${formatCurrency(v.balance ?? v.value, v.currency)}</span>
-        </div>
-        <div style="display:flex;gap:10px">
-          <button type="button" class="btn btn-ghost" data-action="hide-deduct">Cancel</button>
-          <button type="submit" class="btn btn-primary btn-full">Update Balance</button>
-        </div>
-      </form>
-    </div>
-    ` : ''}
-    ` : ''}
-
-    ${s !== 'expired' && s !== 'used' && s !== 'sold' ? `
-    <div style="margin-top:10px">
-      <button class="btn btn-ghost btn-full" data-action="${showReminderForm ? 'hide-reminder' : 'show-reminder'}" data-id="${esc(id)}">
-        ${icon.bell} ${showReminderForm ? 'Cancel' : 'Schedule Reminder'}
-      </button>
-    </div>
-    ` : ''}
-
-    ${showReminderForm ? `
-    <div class="sell-form" style="margin-top:12px">
-      <form id="form-reminder">
-        <input type="hidden" name="voucherId" value="${esc(id)}">
-        <div class="form-group" style="margin-bottom:8px">
-          <label>When should we remind you?</label>
-          <input type="datetime-local" name="reminderDateTime" required
-            min="${nowDateTimeLocalStr()}"
-            value="${defaultReminderDateTimeStr()}">
-        </div>
-        <p class="form-hint" style="margin-bottom:12px;font-size:0.75rem">
-          ${icon.bell} Push notification at this time${v.expiryDate ? ` · Expires ${formatDate(v.expiryDate)}` : ''}
-        </p>
-        <div style="display:flex;gap:8px">
-          <button type="button" class="btn btn-ghost" data-action="hide-reminder" style="flex:0 0 auto">Cancel</button>
-          <button type="submit" class="btn btn-primary btn-full">Save Reminder</button>
-        </div>
-      </form>
-    </div>
-    ` : ''}
-
-    ${showSellForm ? `
-    <div class="sell-form">
-      <div class="sell-hint">${icon.info} Buyer contacts you by email. No payment processing in MVP.</div>
-      <form id="form-sell">
-        <input type="hidden" name="voucherId" value="${esc(id)}">
-        <div class="form-group">
-          <label>Selling Price (${v.currency||'EUR'}) <span style="color:var(--danger)">*</span></label>
-          <input type="text" name="price" placeholder="e.g. 40,00" required>
-          <span class="form-hint">Original value: ${formatCurrency(v.value, v.currency)}</span>
-        </div>
-        <div class="form-group">
-          <label>Who can see this listing?</label>
-          <select name="visibility">
-            <option value="public">Public (visible to everyone browsing the marketplace)</option>
-            <option value="friends_only">Trusted Community only (friends &amp; friends of friends)</option>
-          </select>
-          <span class="form-hint">Trusted Community listings never appear in public Browse</span>
-        </div>
-        <div style="display:flex;gap:10px">
-          <button type="button" class="btn btn-ghost" data-action="hide-sell">Cancel</button>
-          <button type="submit" class="btn btn-primary btn-full">List for Sale</button>
-        </div>
-      </form>
     </div>
     ` : ''}
 

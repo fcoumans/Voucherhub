@@ -9,7 +9,7 @@ import { supabase } from '../../lib/supabase.js';
 import { state } from '../../core/state.js';
 import { fullName } from '../../core/dom.js';
 import { showToast } from '../../core/toast.js';
-import { go } from '../../core/router.js';
+import { go, render } from '../../core/router.js';
 
 /* ============================================================
    LISTING FIELD MAPPING (Supabase ↔ frontend)
@@ -22,6 +22,7 @@ export function mapListing(row) {
     sellerName:    '',
     sellerEmail:   '',
     brand:         '',
+    category:      null,
     originalValue: row.original_value,
     currency:      row.currency || 'EUR',
     sellingPrice:  row.selling_price,
@@ -45,7 +46,7 @@ export async function fetchListings() {
   if (!state.currentUser) return;
   const { data, error } = await supabase
     .from('marketplace_listings')
-    .select('*, vouchers(brand, expiration_date)')
+    .select('*, vouchers(brand, expiration_date, category)')
     .eq('status', 'available')
     .order('created_at', { ascending: false });
   if (error) { console.error('fetchListings error:', error); showToast('Error loading listings'); return; }
@@ -53,6 +54,7 @@ export async function fetchListings() {
     ...mapListing(row),
     brand:      row.vouchers?.brand      || '',
     expiryDate: row.vouchers?.expiration_date || null,
+    category:   row.vouchers?.category   || null,
   }));
 
   // Populate seller name and email from public_profiles
@@ -93,6 +95,19 @@ export async function listForSale(id, price, visibility = 'public') {
   if (lErr) { console.error('listForSale listing insert error:', lErr); showToast('Error creating listing'); return; }
   showToast('Listed on marketplace');
   go('voucher-detail', { id });
+}
+
+// Notifies the seller (in-app + push, via notify_listing_interest) that
+// someone's interested — the only "buyer signal" this marketplace has,
+// short of emailing the seller directly. Tracked client-side per session
+// only, purely so the button doesn't invite repeat-tapping.
+export async function expressInterest(listingId) {
+  if (state.interestedListingIds.has(listingId)) return;
+  const { error } = await supabase.rpc('notify_listing_interest', { p_listing_id: listingId });
+  if (error) { console.error('expressInterest error:', error); showToast('Error notifying seller'); return; }
+  state.interestedListingIds.add(listingId);
+  showToast('Seller notified!');
+  render();
 }
 
 export async function unlist(id) {

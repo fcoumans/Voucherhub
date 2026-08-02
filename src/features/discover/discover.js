@@ -5,7 +5,7 @@ import { supabase } from '../../lib/supabase.js';
 import { state } from '../../core/state.js';
 
 export function getDiscoveryCategories() {
-  const cats = [...new Set(state.discoveryBrands.map(b => b.category).filter(Boolean))].sort();
+  const cats = [...new Set(state.discoveryBrands.flatMap(b => b.categories))].sort();
   return ['All', ...cats];
 }
 
@@ -18,7 +18,7 @@ export function mapDiscoveryBrand(row) {
   return {
     id:          row.id,
     name:        row.name,
-    category:    row.category,
+    categories:  row.categories || [],
     regions:     row.regions || [],
     location:    row.location || '',
     description: row.description,
@@ -32,7 +32,7 @@ export function mapDiscoveryBrand(row) {
 export async function fetchDiscoveryBrands() {
   const { data, error } = await supabase
     .from('discovery_brands')
-    .select('id, name, category, regions, location, description, domain, logo_url, website_url, fun_fact')
+    .select('id, name, categories, regions, location, description, domain, logo_url, website_url, fun_fact')
     .order('sort_order', { ascending: true })
     .order('name', { ascending: true });
   if (error) { console.error('fetchDiscoveryBrands error:', error); return; }

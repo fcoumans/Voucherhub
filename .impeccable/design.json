@@ -1,10 +1,11 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-08-01T18:00:00Z",
+  "generatedAt": "2026-08-02T12:00:00Z",
   "title": "Design System: VoucherWise",
   "extensions": {
     "colorMeta": {
       "primary": { "role": "primary", "displayName": "Emerald Sea", "canonical": "#13B5A2", "tonalRamp": ["#052B26", "#0A4A42", "#0E9488", "#13B5A2", "#3FC7BA", "#7FDBD2", "#CFF1E8", "#EFFAF7"] },
+      "hero-mint": { "role": "primary", "displayName": "Hero Mint", "canonical": "#4FCDAE", "tonalRamp": ["#0A2B24", "#124940", "#1C6B5D", "#279A85", "#3AB79E", "#4FCDAE", "#8FE0CE", "#D6F4EC"] },
       "secondary": { "role": "secondary", "displayName": "Slate Mist", "canonical": "#9AA6B2", "tonalRamp": ["#2A3138", "#454E57", "#5E6871", "#7A848D", "#9AA6B2", "#BCC5CD", "#DDE2E7", "#F2F4F6"] },
       "accent": { "role": "tertiary", "displayName": "Warm Coral", "canonical": "#FF7A59", "tonalRamp": ["#5C1E0C", "#8F3419", "#C24B26", "#F0623B", "#FF7A59", "#FF9E85", "#FFC5B4", "#FFEAE0"] },
       "ink": { "role": "neutral", "displayName": "Deep Navy Ink", "canonical": "#11233F", "tonalRamp": ["#050A13", "#0B1526", "#11233F", "#1C3358", "#445162", "#7C8797", "#C3C9D1", "#E9EBEF"] },
@@ -15,6 +16,7 @@
       "shadow-ink": { "role": "neutral", "displayName": "Shadow Ink", "canonical": "rgba(0,0,0,0.1)", "tonalRamp": [] },
       "desktop-backdrop": { "role": "neutral", "displayName": "Desktop Backdrop", "canonical": "#DDD9CE", "tonalRamp": ["#3A382F", "#615E4F", "#87836C", "#ADA88C", "#C6C2AD", "#DDD9CE", "#ECEAE2", "#F7F6F2"] },
       "accent-deep": { "role": "tertiary", "displayName": "Warm Coral Deep", "canonical": "#A83A0A", "tonalRamp": ["#2E0F03", "#502004", "#7A3006", "#A83A0A", "#F0623B", "#FF9E85", "#FFC5B4", "#FFEAE0"] },
+      "warning-deep": { "role": "status", "displayName": "Warning Deep", "canonical": "#8A4B0A", "tonalRamp": ["#2E1902", "#4D2B04", "#6E3D07", "#8A4B0A", "#B8630D", "#F0932B", "#F6B871", "#FCE3C4"] },
       "success-bright": { "role": "status", "displayName": "Success Bright (on-dark)", "canonical": "#7EEAD1", "tonalRamp": [] },
       "warning-bright": { "role": "status", "displayName": "Warning Bright (on-dark)", "canonical": "#FFB199", "tonalRamp": [] },
       "danger-bright": { "role": "status", "displayName": "Danger Bright (on-dark)", "canonical": "#FCA5A5", "tonalRamp": [] }
@@ -22,14 +24,15 @@
     "typographyMeta": {
       "display": { "displayName": "Cabinet Grotesk", "purpose": "Screen titles, money values, KPI numerals — never body copy." },
       "body": { "displayName": "General Sans", "purpose": "All reading text, labels, form inputs." },
-      "label": { "displayName": "General Sans (uppercase label)", "purpose": "Badges, KPI/detail-item labels — short data labels attached to a value only, never a floating kicker." },
+      "label": { "displayName": "General Sans (uppercase label)", "purpose": "Badges, KPI/detail-item labels, and section eyebrows — including standalone kickers above a section (Quick Actions, My Wallet), not just labels attached to a value." },
       "mono": { "displayName": "SF Mono", "purpose": "Voucher and referral codes only — a real measurement/data use." },
       "gift-note": { "displayName": "Georgia (gift note)", "purpose": "The one deliberate serif exception: the personal gift message and its display, kept distinct from the rest of the functional app." }
     },
     "shadows": [
       { "name": "ambient-resting", "value": "0 1px 3px rgba(17,35,63,0.05), 0 2px 8px rgba(17,35,63,0.04)", "purpose": "Flat surfaces at rest (tabs, chips, plain cards)." },
-      { "name": "glass-card", "value": "inset 0 1px 0 rgba(255,255,255,0.7), 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -4px rgba(0,0,0,0.1)", "purpose": "Every liquid-glass surface: voucher, listing, referral cards, quick actions, KPI cards, settings list." },
-      { "name": "lifted", "value": "0 4px 16px rgba(17,35,63,0.12), 0 8px 32px rgba(17,35,63,0.08)", "purpose": "FAB and primary floating CTA." }
+      { "name": "glass-card", "value": "inset 0 1px 0 rgba(255,255,255,0.7), 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -4px rgba(0,0,0,0.1)", "purpose": "Every liquid-glass surface: voucher, listing, referral cards, quick actions, portfolio card, settings list." },
+      { "name": "lifted", "value": "0 4px 16px rgba(17,35,63,0.12), 0 8px 32px rgba(17,35,63,0.08)", "purpose": "FAB and primary floating CTA." },
+      { "name": "hero-ambient", "value": "0 8px 24px rgba(14,149,133,0.22)", "purpose": "The Home Hero banner only — an Emerald-tinted ambient shadow instead of the neutral black-alpha used elsewhere, so the hero reads as emitting its own gradient rather than sitting in generic depth." }
     ],
     "motion": [
       { "name": "ease-out", "value": "cubic-bezier(0.23, 1, 0.32, 1)", "purpose": "Default press/settle easing for buttons and cards." },
@@ -52,9 +55,9 @@
       "name": "Liquid Glass Card",
       "kind": "card",
       "refersTo": "card-glass",
-      "description": "The signature surface: voucher/listing/referral list rows, quick actions, KPI cards.",
+      "description": "The signature surface: voucher/listing/referral list rows, KPI cards.",
       "html": "<div class=\"ds-card-glass\"><div class=\"ds-card-glass-title\">Zalando</div><div class=\"ds-card-glass-sub\">•••• 4821</div></div>",
-      "css": ".ds-card-glass { background: linear-gradient(135deg, rgba(255,255,255,0.8) 0%, rgba(244,241,232,0.35) 100%); backdrop-filter: blur(20px) saturate(180%); -webkit-backdrop-filter: blur(20px) saturate(180%); border: 1px solid rgba(255,255,255,0.4); border-radius: 16px; padding: 14px; box-shadow: inset 0 1px 0 rgba(255,255,255,0.7), 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -4px rgba(0,0,0,0.1); transition: transform 160ms cubic-bezier(0.23,1,0.32,1); } .ds-card-glass:active { transform: scale(0.99); } .ds-card-glass-title { font-family: 'General Sans', sans-serif; font-weight: 700; font-size: 0.9375rem; color: #11233F; } .ds-card-glass-sub { font-size: 0.8125rem; color: #445162; font-family: 'SF Mono', monospace; }"
+      "css": ".ds-card-glass { background: linear-gradient(135deg, rgba(255,255,255,0.8) 0%, rgba(244,241,232,0.35) 100%); backdrop-filter: blur(20px) saturate(180%); -webkit-backdrop-filter: blur(20px) saturate(180%); border: 1px solid rgba(255,255,255,0.4); border-radius: 16px; padding: 14px; box-shadow: inset 0 1px 0 rgba(255,255,255,0.7), 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -4px rgba(0,0,0,0.1); transition: transform 160ms cubic-bezier(0.23,1,0.32,1); } .ds-card-glass:active { transform: scale(0.99); } .ds-card-glass-title { font-family: 'General Sans', sans-serif; font-weight: 600; font-size: 0.9375rem; color: #11233F; } .ds-card-glass-sub { font-size: 0.8125rem; color: #445162; font-family: 'SF Mono', monospace; }"
     },
     {
       "name": "Status Badge",
@@ -76,7 +79,7 @@
       "name": "Bottom Nav Item",
       "kind": "nav",
       "refersTo": "nav-item",
-      "description": "5-item fixed bottom navigation; icon + label, active state is color-only.",
+      "description": "6-item fixed bottom navigation (Home, Discover, Wallet, Market, Referrals, Profile); icon + label, active state is color-only.",
       "html": "<button class=\"ds-nav-item ds-nav-item-active\"><svg width=\"22\" height=\"22\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z\"/><polyline points=\"9 22 9 12 15 12 15 22\"/></svg><span>Home</span></button>",
       "css": ".ds-nav-item { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; padding: 6px 0; color: #445162; font-family: 'General Sans', sans-serif; font-size: 0.6875rem; font-weight: 600; transition: color 150ms ease; background: none; border: none; } .ds-nav-item-active { color: #13B5A2; }"
     },
@@ -87,6 +90,38 @@
       "description": "Standard form field used across add/edit voucher, auth, and referral forms.",
       "html": "<input class=\"ds-input\" placeholder=\"Search or type a brand…\">",
       "css": ".ds-input { padding: 12px 14px; border: 1.5px solid rgba(17,35,63,0.08); border-radius: 10px; font-family: 'General Sans', sans-serif; font-size: 0.9375rem; color: #11233F; background: #FFFFFF; width: 100%; transition: border-color 0.15s; outline: none; } .ds-input:focus { border-color: #13B5A2; box-shadow: 0 0 0 3px rgba(19,181,162,0.12); }"
+    },
+    {
+      "name": "Home Hero",
+      "kind": "custom",
+      "refersTo": "home-hero",
+      "description": "The one full-bleed departure from the fixed-header shell: a diagonal Emerald gradient banner (Home tab only) with two decorative orb shapes, a greeting, notification/profile icon buttons, and a translucent glass stat row.",
+      "html": "<div class=\"ds-hero\"><div class=\"ds-hero-top\"><div><p class=\"ds-hero-greeting\">Good morning,</p><h2 class=\"ds-hero-name\">Fien</h2></div><div class=\"ds-hero-actions\"><button class=\"ds-hero-icon-btn\" aria-label=\"Notifications\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\"><path d=\"M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9\"/><path d=\"M13.73 21a2 2 0 01-3.46 0\"/></svg><span class=\"ds-hero-dot\"></span></button><button class=\"ds-hero-icon-btn\" aria-label=\"Profile\"><span>F</span></button></div></div><div class=\"ds-hero-stats\"><div class=\"ds-hero-stat\"><span class=\"ds-hero-stat-value\">5</span><span class=\"ds-hero-stat-label\">Active</span></div><div class=\"ds-hero-divider\"></div><div class=\"ds-hero-stat\"><span class=\"ds-hero-stat-value\">€382</span><span class=\"ds-hero-stat-label\">Total Value</span></div><div class=\"ds-hero-divider\"></div><div class=\"ds-hero-stat\"><span class=\"ds-hero-stat-value\">1</span><span class=\"ds-hero-stat-label\">Expiring</span></div></div></div>",
+      "css": ".ds-hero { position: relative; padding: 20px 20px 24px; background: linear-gradient(150deg, #0E9488 0%, #4FCDAE 100%); border-radius: 0 0 28px 28px; box-shadow: 0 8px 24px rgba(14,149,133,0.22); overflow: hidden; font-family: 'General Sans', sans-serif; } .ds-hero::before, .ds-hero::after { content: ''; position: absolute; border-radius: 50%; background: radial-gradient(circle at 32% 30%, rgba(255,255,255,0.22), rgba(255,255,255,0.03) 70%); pointer-events: none; } .ds-hero::before { width: 160px; height: 160px; top: -70px; right: -40px; } .ds-hero::after { width: 220px; height: 220px; bottom: -110px; left: -70px; } .ds-hero-top { position: relative; display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 22px; } .ds-hero-greeting { font-size: 0.9375rem; color: rgba(255,255,255,0.85); margin: 0 0 2px; } .ds-hero-name { font-family: 'Cabinet Grotesk', serif; font-size: 1.625rem; color: #fff; margin: 0; } .ds-hero-actions { display: flex; align-items: center; gap: 10px; } .ds-hero-icon-btn { position: relative; width: 38px; height: 38px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.22); color: #fff; border: none; font-family: 'Cabinet Grotesk', serif; font-size: 15px; font-weight: 700; transition: background 150ms ease; } .ds-hero-icon-btn:hover { background: rgba(255,255,255,0.32); } .ds-hero-dot { position: absolute; top: 2px; right: 3px; width: 9px; height: 9px; background: #F0932B; border-radius: 50%; border: 1.5px solid #fff; } .ds-hero-stats { position: relative; background: rgba(255,255,255,0.16); border: 1px solid rgba(255,255,255,0.25); border-radius: 14px; padding: 18px 20px; display: flex; align-items: center; justify-content: space-around; box-shadow: inset 0 1px 0 rgba(255,255,255,0.2); } .ds-hero-stat { display: flex; flex-direction: column; align-items: center; gap: 4px; } .ds-hero-stat-value { font-family: 'Cabinet Grotesk', serif; font-size: 1.625rem; font-weight: 800; color: #fff; line-height: 1; letter-spacing: -0.02em; } .ds-hero-stat-label { font-size: 0.6875rem; color: rgba(255,255,255,0.65); font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; } .ds-hero-divider { width: 1px; height: 32px; background: rgba(255,255,255,0.18); }"
+    },
+    {
+      "name": "Quick Action Card",
+      "kind": "custom",
+      "refersTo": "quick-action-card",
+      "description": "Squircle icon-tile card, three-up under a QUICK ACTIONS eyebrow on Home. Plain, literal icons only; caption uses the Calm-Bold Rule's 600 weight, not 700.",
+      "html": "<button class=\"ds-quick-action\"><div class=\"ds-qa-icon\"><svg width=\"22\" height=\"22\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\"><line x1=\"12\" y1=\"5\" x2=\"12\" y2=\"19\"/><line x1=\"5\" y1=\"12\" x2=\"19\" y2=\"12\"/></svg></div><span>Add Voucher</span></button>",
+      "css": ".ds-quick-action { background: linear-gradient(135deg, rgba(255,255,255,0.8) 0%, rgba(244,241,232,0.35) 100%); backdrop-filter: blur(20px) saturate(180%); -webkit-backdrop-filter: blur(20px) saturate(180%); border: 1px solid rgba(255,255,255,0.4); border-radius: 18px; padding: 26px 12px 22px; display: flex; flex-direction: column; align-items: center; gap: 12px; box-shadow: inset 0 1px 0 rgba(255,255,255,0.7), 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -4px rgba(0,0,0,0.1); transition: transform 160ms cubic-bezier(0.23,1,0.32,1); } .ds-quick-action:active { transform: scale(0.97); } .ds-qa-icon { width: 56px; height: 56px; border-radius: 16px; display: flex; align-items: center; justify-content: center; background: #CFF1E8; color: #13B5A2; } .ds-quick-action span { font-family: 'General Sans', sans-serif; font-size: 0.8125rem; font-weight: 600; color: #11233F; text-align: center; }"
+    },
+    {
+      "name": "Portfolio Card",
+      "kind": "custom",
+      "refersTo": "portfolio-card",
+      "description": "Category-spend donut + legend on Home, in a liquid-glass card matching Quick Actions. Pure-CSS conic-gradient ring (no charting library) from a dedicated soft-teal ramp, darkest-to-lightest by category size, with an equal-width gap at every segment boundary including the wrap-around seam.",
+      "html": "<div class=\"ds-portfolio\"><div class=\"ds-portfolio-header\"><h3>Portfolio</h3><span class=\"ds-portfolio-total\">€382 total</span></div><div class=\"ds-portfolio-body\"><div class=\"ds-donut\" style=\"background: conic-gradient(#3AAE9C 0.5% 55%, transparent 55% 56%, #5CC2AE 56% 78%, transparent 78% 79%, #7ED3C0 79% 99.5%, transparent 99.5% 100%);\"></div><div class=\"ds-donut-legend\"><div class=\"ds-donut-row\"><span class=\"ds-donut-dot\" style=\"background:#3AAE9C\"></span><span class=\"ds-donut-label\">Food &amp; Drink</span><span class=\"ds-donut-value\">€223</span></div><div class=\"ds-donut-row\"><span class=\"ds-donut-dot\" style=\"background:#5CC2AE\"></span><span class=\"ds-donut-label\">Travel</span><span class=\"ds-donut-value\">€118</span></div><div class=\"ds-donut-row\"><span class=\"ds-donut-dot\" style=\"background:#7ED3C0\"></span><span class=\"ds-donut-label\">Sports and Health</span><span class=\"ds-donut-value\">€41</span></div></div></div></div>",
+      "css": ".ds-portfolio { background: linear-gradient(135deg, rgba(255,255,255,0.8) 0%, rgba(244,241,232,0.35) 100%); backdrop-filter: blur(20px) saturate(180%); -webkit-backdrop-filter: blur(20px) saturate(180%); border: 1px solid rgba(255,255,255,0.4); border-radius: 18px; padding: 20px; box-shadow: inset 0 1px 0 rgba(255,255,255,0.7), 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -4px rgba(0,0,0,0.1); font-family: 'General Sans', sans-serif; } .ds-portfolio-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; } .ds-portfolio-header h3 { font-family: 'Cabinet Grotesk', serif; font-weight: 700; font-size: 1.0625rem; color: #11233F; margin: 0; } .ds-portfolio-total { font-weight: 800; font-size: 1rem; color: #13B5A2; } .ds-portfolio-body { display: flex; align-items: center; gap: 24px; } .ds-donut { position: relative; flex-shrink: 0; width: 120px; height: 120px; border-radius: 50%; } .ds-donut::after { content: ''; position: absolute; top: 50%; left: 50%; width: 62%; height: 62%; background: #fff; border-radius: 50%; transform: translate(-50%,-50%); } .ds-donut-legend { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 14px; } .ds-donut-row { display: flex; align-items: center; gap: 10px; } .ds-donut-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; } .ds-donut-label { flex: 1; min-width: 0; font-size: 0.875rem; color: #445162; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .ds-donut-value { font-weight: 700; font-size: 0.875rem; color: #11233F; flex-shrink: 0; }"
+    },
+    {
+      "name": "Expiring Alert",
+      "kind": "custom",
+      "refersTo": "expiring-alert",
+      "description": "Compact single-row Warning card on the Home Hero for the single most urgent expiring voucher — deliberately slimmer than a full Liquid Glass Card. Title uses Warning Deep at 600 weight (Calm-Bold Rule), not a shouty bold red.",
+      "html": "<div class=\"ds-expiring-alert\"><div class=\"ds-expiring-icon\"><svg width=\"17\" height=\"17\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#fff\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z\"/><line x1=\"12\" y1=\"9\" x2=\"12\" y2=\"13\"/><line x1=\"12\" y1=\"17\" x2=\"12.01\" y2=\"17\"/></svg></div><div class=\"ds-expiring-body\"><div class=\"ds-expiring-title\">Expiring soon</div><div class=\"ds-expiring-sub\">Starbucks • €38 expires 08-2026</div></div><button class=\"ds-expiring-cta\">Use now</button></div>",
+      "css": ".ds-expiring-alert { display: flex; align-items: center; gap: 12px; padding: 14px 16px; background: #FDF0DF; border: 1px solid rgba(240,147,43,0.3); border-radius: 14px; font-family: 'General Sans', sans-serif; } .ds-expiring-icon { flex-shrink: 0; width: 36px; height: 36px; border-radius: 50%; background: #F0932B; display: flex; align-items: center; justify-content: center; } .ds-expiring-body { flex: 1; min-width: 0; } .ds-expiring-title { font-weight: 600; font-size: 0.8125rem; color: #8A4B0A; } .ds-expiring-sub { font-size: 0.8125rem; color: #445162; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .ds-expiring-cta { flex-shrink: 0; font-size: 0.875rem; font-weight: 700; color: #F0932B; background: none; border: none; }"
     }
   ],
   "narrative": {
@@ -94,26 +129,30 @@
     "overview": "VoucherWise is a place of custody, not a discount bin: it holds real financial value (voucher codes, PINs, resale cash) and has to read as trustworthy at a glance, the way a banking app does. But the brief explicitly rejects fintech's blue austerity — so the vault is lined with warmth: a cream-and-glass material system, an emerald accent that reads as growth rather than corporate trust-blue, and rare, deliberate celebratory moments that never bleed into the everyday screens. The system is calm by default and animates with purpose, not decoration. Every screen states voucher value, expiration, and price with the same unambiguous clarity a bank statement would use, and every surface is legible before it is charming.",
     "keyCharacteristics": [
       "A single sanctioned decorative move — the liquid-glass sheen — applied consistently across primary cards, never as one-off flourish.",
-      "Warm cream base instead of cold fintech white/gray, with a deep navy ink for text and structural surfaces.",
+      "Warm cream base instead of cold fintech white/gray, with a deep navy ink for text and structural surfaces (the voucher/listing detail header, gift cards).",
       "Emerald as the one confident accent; everything else in the palette is neutral or purely functional.",
       "A distinct self-hosted display face for numbers and headings — money and headlines are never rendered in the system font."
     ],
     "rules": [
-      { "name": "The One Accent Rule", "body": "Emerald is the only color allowed to signal \"this is interactive/primary\" on a calm screen. Success/warning/danger colors are reserved strictly for their semantic meaning and must never be reused decoratively.", "section": "colors" },
+      { "name": "The One Accent Rule", "body": "Emerald is the only color allowed to signal \"this is interactive/primary\" on a calm screen. Warning orange is the only color allowed to signal \"pay attention\" (status, validation, alerts); Danger red is the only color allowed to signal \"this is destructive.\" Neither may be reused decoratively or swapped for the other.", "section": "colors" },
       { "name": "The No-System-Font Rule", "body": "Cabinet Grotesk and General Sans are the brand voice; the system sans stack is a loading fallback only, never a deliberate choice.", "section": "typography" },
+      { "name": "The Calm-Bold Rule", "body": "Card-level identity text (voucher brand name, quick-action captions, the expiring-alert title) uses 600 weight, not 700/800 — bold enough to anchor the card, calm enough not to out-shout the money numerals next to it. Reserve 700+ for badges, buttons, and headings.", "section": "typography" },
       { "name": "The Glass-Is-The-One-Decoration Rule", "body": "backdrop-filter: blur(20px) saturate(180%) plus the diagonal white-to-cream sheen is the single sanctioned decorative surface treatment. It must be applied identically everywhere a primary content card appears and must never appear as a one-off on a single screen.", "section": "elevation" }
     ],
     "dos": [
       "Do use the liquid-glass recipe verbatim on every primary content card, including newly added ones.",
       "Do render every icon as an authored SVG from the shared icon set, 2-2.5px stroke, rounded caps.",
       "Do keep the accent coral reserved for the gift-note/celebration moments only.",
-      "Do set display type (Cabinet Grotesk) on money values and headings; body copy stays in General Sans."
+      "Do set display type (Cabinet Grotesk) on money values and headings; body copy stays in General Sans.",
+      "Do use Warning orange for any non-destructive alert, status, or validation signal; reserve Danger red strictly for delete actions and Log Out.",
+      "Do use 600 weight for card-level identity labels per the Calm-Bold Rule — 700+ is for badges, buttons, and headings only."
     ],
     "donts": [
       "Don't reintroduce a colored border-left/right on cards or list items as a status signal — use the badge + tint pattern instead.",
       "Don't use emoji as a stand-in for the icon system on interactive controls.",
       "Don't fall back to the system font stack as a deliberate choice.",
-      "Don't add a second accent color or a second decorative surface treatment alongside liquid-glass."
+      "Don't add a second accent color or a second decorative surface treatment alongside liquid-glass — the Home Hero's orb shapes and the Portfolio donut ramp are the two narrow, named exceptions, each scoped to exactly one component.",
+      "Don't use Danger red for anything other than a delete action or Log Out — reach for Warning orange instead."
     ]
   }
 }

@@ -1,0 +1,140 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "design-system-radius",
+        "value": "30px",
+        "createdAt": "2026-08-01T19:49:13.400Z",
+        "reason": "User confirmed 30px is intentional for the home header's rounded content scoop (chose 28-32px over the 20px token when asked)"
+      },
+      {
+        "rule": "design-system-font",
+        "value": "caveat",
+        "createdAt": "2026-08-02T11:00:39.274Z",
+        "reason": "User asked for handwritten typography on gift notes; Caveat self-hosted like the other two typefaces"
+      },
+      {
+        "rule": "design-system-font",
+        "value": "dynalight",
+        "createdAt": "2026-08-02T12:02:42.354Z",
+        "reason": "User asked to change the gift-note handwritten font to Dynalight; self-hosted like the other typefaces"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#e8763d",
+        "createdAt": "2026-08-02T13:11:26.805Z",
+        "reason": "Category Colors palette (Food & Drink) — documented in DESIGN.md, defined in src/core/categories.js"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#d946a6",
+        "createdAt": "2026-08-02T13:11:26.887Z",
+        "reason": "Category Colors palette (Shopping) — documented in DESIGN.md, defined in src/core/categories.js"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#3b82f6",
+        "createdAt": "2026-08-02T13:11:26.961Z",
+        "reason": "Category Colors palette (Travel) — documented in DESIGN.md, defined in src/core/categories.js"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#6366f1",
+        "createdAt": "2026-08-02T13:11:27.012Z",
+        "reason": "Category Colors palette (Entertainment) — documented in DESIGN.md, defined in src/core/categories.js"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#0891b2",
+        "createdAt": "2026-08-02T13:11:27.055Z",
+        "reason": "Category Colors palette (Finance) — documented in DESIGN.md, defined in src/core/categories.js"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#8b5cf6",
+        "createdAt": "2026-08-02T13:11:27.099Z",
+        "reason": "Category Colors palette (Sports and Health) — documented in DESIGN.md, defined in src/core/categories.js"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#ec4899",
+        "createdAt": "2026-08-02T13:11:27.141Z",
+        "reason": "Category Colors palette (Beauty & Wellness) — documented in DESIGN.md, defined in src/core/categories.js"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#22c55e",
+        "createdAt": "2026-08-02T13:11:27.178Z",
+        "reason": "Category Colors palette (Sustainability) — documented in DESIGN.md, defined in src/core/categories.js"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#64748b",
+        "createdAt": "2026-08-02T13:11:27.213Z",
+        "reason": "Category Colors palette (Mobility) — documented in DESIGN.md, defined in src/core/categories.js"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#9aa6b2",
+        "createdAt": "2026-08-02T13:11:27.250Z",
+        "reason": "Category Colors palette (Other) — documented in DESIGN.md, defined in src/core/categories.js"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#c1723f",
+        "createdAt": "2026-08-02T13:28:18.889Z",
+        "reason": "Category Colors palette, muted revision (Food & Drink) — documented in DESIGN.md, defined in src/core/categories.js"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#b15a93",
+        "createdAt": "2026-08-02T13:28:18.929Z",
+        "reason": "Category Colors palette, muted revision (Shopping) — documented in DESIGN.md, defined in src/core/categories.js"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#5482c4",
+        "createdAt": "2026-08-02T13:28:18.972Z",
+        "reason": "Category Colors palette, muted revision (Travel) — documented in DESIGN.md, defined in src/core/categories.js"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#7069b8",
+        "createdAt": "2026-08-02T13:28:19.026Z",
+        "reason": "Category Colors palette, muted revision (Entertainment) — documented in DESIGN.md, defined in src/core/categories.js"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#3e8794",
+        "createdAt": "2026-08-02T13:28:19.068Z",
+        "reason": "Category Colors palette, muted revision (Finance) — documented in DESIGN.md, defined in src/core/categories.js"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#8873c4",
+        "createdAt": "2026-08-02T13:28:19.107Z",
+        "reason": "Category Colors palette, muted revision (Sports and Health) — documented in DESIGN.md, defined in src/core/categories.js"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#c97aa0",
+        "createdAt": "2026-08-02T13:28:19.159Z",
+        "reason": "Category Colors palette, muted revision (Beauty & Wellness) — documented in DESIGN.md, defined in src/core/categories.js"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#5f9e5f",
+        "createdAt": "2026-08-02T13:28:19.200Z",
+        "reason": "Category Colors palette, muted revision (Sustainability) — documented in DESIGN.md, defined in src/core/categories.js"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#77839a",
+        "createdAt": "2026-08-02T13:28:26.789Z",
+        "reason": "Category Colors palette, muted revision (Mobility) — documented in DESIGN.md, defined in src/core/categories.js"
+      }
+    ]
+  }
+}

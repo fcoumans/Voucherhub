@@ -69,16 +69,26 @@ export function viewProfile() {
       <button class="settings-item" data-nav="friends">
         <div style="position:relative;display:inline-flex">
           <div class="si-icon" style="background:#CFF1E8;color:#13B5A2">${icon.users}</div>
-          ${state.pendingRequests.length > 0 ? `<span style="position:absolute;top:-2px;right:-2px;width:8px;height:8px;background:#e53e3e;border-radius:50%;border:1.5px solid #fff"></span>` : ''}
+          ${state.pendingRequests.length > 0 ? `<span style="position:absolute;top:-2px;right:-2px;width:8px;height:8px;background:var(--warning);border-radius:50%;border:1.5px solid #fff"></span>` : ''}
         </div>
         <div class="si-text">
           <div class="si-title">Friends</div>
-          <div class="si-subtitle">${state.friendIds.length} friends${state.pendingRequests.length > 0 ? ` · <span style="color:#e53e3e;font-weight:600">${state.pendingRequests.length} pending</span>` : ''}</div>
+          <div class="si-subtitle">${state.friendIds.length} friends${state.pendingRequests.length > 0 ? ` · <span style="color:var(--warning);font-weight:600">${state.pendingRequests.length} pending</span>` : ''}</div>
         </div>
       </button>
       <button class="settings-item" data-nav="pending-gifts">
         <div class="si-icon" style="background:#CFF1E8;color:#13B5A2">${icon.gift}</div>
         <div class="si-text"><div class="si-title">Pending Gifts</div><div class="si-subtitle">${state.pendingGifts.length} waiting to be claimed</div></div>
+      </button>
+      <button class="settings-item" data-nav="notifications">
+        <div style="position:relative;display:inline-flex">
+          <div class="si-icon" style="background:#CFF1E8;color:#13B5A2">${icon.bell}</div>
+          ${state.activityNotifications.some(n => !n.read) ? `<span style="position:absolute;top:-2px;right:-2px;width:8px;height:8px;background:var(--warning);border-radius:50%;border:1.5px solid #fff"></span>` : ''}
+        </div>
+        <div class="si-text">
+          <div class="si-title">Notifications</div>
+          <div class="si-subtitle">${state.activityNotifications.length} total${state.activityNotifications.some(n => !n.read) ? ` · <span style="color:var(--warning);font-weight:600">${state.activityNotifications.filter(n => !n.read).length} unread</span>` : ''}</div>
+        </div>
       </button>
     </div>
 

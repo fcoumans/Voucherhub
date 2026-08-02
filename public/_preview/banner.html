@@ -1,0 +1,63 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="/src/style.css">
+<style>body{background:#eee}</style>
+</head>
+<body>
+<div id="app">
+  <div class="home-hero">
+    <div class="home-hero-top">
+      <div>
+        <p class="greeting">Good morning,</p>
+        <h2>Fien</h2>
+      </div>
+      <div class="home-hero-actions">
+        <button class="hero-icon-btn" aria-label="Notifications">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
+          <span class="hero-dot"></span>
+        </button>
+        <button class="hero-icon-btn" aria-label="Profile">
+          <span class="hero-avatar-initial">F</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="home-hero-stats">
+      <div class="stat">
+        <span class="stat-value">5</span>
+        <span class="stat-label">Active</span>
+      </div>
+      <div class="stat-divider"></div>
+      <div class="stat">
+        <span class="stat-value">€382</span>
+        <span class="stat-label">Total Value</span>
+      </div>
+      <div class="stat-divider"></div>
+      <div class="stat">
+        <span class="stat-value">1</span>
+        <span class="stat-label">Expiring</span>
+      </div>
+    </div>
+  </div>
+
+  <main class="content content--home">
+    <section class="home-section">
+      <div class="voucher-list" style="margin-top:0">
+        <div class="expiring-alert">
+          <div class="expiring-alert-icon">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          </div>
+          <div class="expiring-alert-body">
+            <div class="expiring-alert-title">Expiring soon</div>
+            <div class="expiring-alert-sub">Starbucks • €38 expires 08-2026</div>
+          </div>
+          <button class="expiring-alert-cta">Use now</button>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+</body>
+</html>

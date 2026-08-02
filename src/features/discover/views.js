@@ -3,6 +3,7 @@ import { state } from '../../core/state.js';
 import { esc, initial } from '../../core/dom.js';
 import { LOGODEV_TOKEN } from '../../core/brands.js';
 import { icon, renderHeader, renderBottomNav, navIcons } from '../../core/ui.js';
+import { categoryBadge, categoryFilterDropdown } from '../../core/categories.js';
 import { getDiscoveryCategories, getDiscoveryRegions } from './discover.js';
 
 function discoveryLogoUrl(b) {
@@ -34,7 +35,8 @@ function discoveryBrandCard(b) {
     ${discoveryAvatar(b, 46)}
     <div class="vc-info">
       <div class="vc-brand">${esc(b.name)}</div>
-      <div style="font-size:0.8125rem;color:var(--text-muted)">${esc(b.category)} · ${esc(b.regions.join(', '))}</div>
+      <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:3px">${b.categories.map(c => categoryBadge(c)).join('')}</div>
+      <div style="font-size:0.75rem;color:var(--text-muted);margin-top:3px">${esc(b.regions.join(', '))}</div>
     </div>
     <div class="vc-right" style="color:var(--secondary);display:flex;transform:scaleX(-1)">${icon.back}</div>
   </div>`;
@@ -46,13 +48,10 @@ export function viewDiscover() {
   const regionFilter = state.discoveryRegionFilter || 'All';
 
   let list = state.discoveryBrands;
-  if (catFilter !== 'All') list = list.filter(b => b.category === catFilter);
+  if (catFilter !== 'All') list = list.filter(b => b.categories.includes(catFilter));
   if (regionFilter !== 'All') list = list.filter(b => b.regions.includes(regionFilter));
   if (q) list = list.filter(b => b.name.toLowerCase().includes(q));
 
-  const categoryOptions = getDiscoveryCategories().map(c =>
-    `<option value="${esc(c)}" ${catFilter===c?'selected':''}>${c==='All'?'All categories':esc(c)}</option>`
-  ).join('');
   const regionOptions = getDiscoveryRegions().map(r =>
     `<option value="${esc(r)}" ${regionFilter===r?'selected':''}>${r==='All'?'All regions':esc(r)}</option>`
   ).join('');
@@ -66,7 +65,7 @@ export function viewDiscover() {
       <input type="search" placeholder="Search brand…" value="${esc(state.searchQuery)}" data-search="discover">
     </div>
     <div style="display:flex;gap:10px;margin-bottom:16px">
-      <select class="sort-select" style="flex:1" data-discover-cat-select>${categoryOptions}</select>
+      ${categoryFilterDropdown(getDiscoveryCategories(), catFilter, 'discover-cat', { style: 'flex:1' })}
       <select class="sort-select" style="flex:1" data-discover-region-select>${regionOptions}</select>
     </div>
     ${list.length > 0
@@ -110,20 +109,16 @@ export function viewDiscoverDetail() {
       ${discoveryAvatar(b, 64)}
       <div>
         <div style="font-family:var(--font-display);font-size:1.25rem;font-weight:800;letter-spacing:-0.01em">${esc(b.name)}</div>
-        <div class="text-muted" style="font-size:0.875rem">${esc(b.category)}</div>
+        <div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:5px">${b.categories.map(c => categoryBadge(c)).join('')}</div>
       </div>
     </div>
     <div class="detail-grid">
-      <div class="detail-item">
-        <div class="detail-item-label">Category</div>
-        <div class="detail-item-value">${esc(b.category)}</div>
-      </div>
-      <div class="detail-item">
+      <div class="detail-item" style="grid-column:span 2">
         <div class="detail-item-label">Region</div>
         <div class="detail-item-value">${esc(b.regions.join(', ') || 'N/A')}</div>
       </div>
     </div>
-    ${b.location ? `<div class="sell-hint">${icon.info} ${esc(b.location)}</div>` : ''}
+    ${b.location ? `<div class="text-muted" style="font-size:0.8125rem;margin-bottom:16px">${esc(b.location)}</div>` : ''}
     <p style="font-size:0.9375rem;line-height:1.6;margin:16px 0">${esc(b.description)}</p>
     ${b.funFact ? `<div class="sell-hint" style="background:var(--success-light);color:var(--text)">${icon.info} ${esc(b.funFact)}</div>` : ''}
     <a class="btn btn-primary btn-full" style="margin-top:8px;display:flex" href="${esc(b.websiteUrl)}" target="_blank" rel="noopener noreferrer">${icon.link} Buy Gift Card</a>

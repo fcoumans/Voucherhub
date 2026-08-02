@@ -1,8 +1,9 @@
 // Marketplace browse/community/mine tabs and the listing detail page.
-import { state } from '../../core/state.js';
+import { state, CATEGORIES } from '../../core/state.js';
 import { esc, daysUntil, formatCurrency, formatDate } from '../../core/dom.js';
 import { getBrandDescription } from '../../core/brands.js';
 import { icon, avatar, navIcons, renderHeader, renderBottomNav } from '../../core/ui.js';
+import { categoryBadge, categoryFilterDropdown } from '../../core/categories.js';
 import { discountPct } from './marketplace.js';
 
 /* ============================================================
@@ -18,15 +19,16 @@ export function listingCard(l, isOwn = false) {
     <div class="lc-info">
       <div class="lc-brand">${esc(l.brand)}${l.visibility === 'friends_only' ? ' <span class="lc-tag">Trusted Community</span>' : ''}</div>
       <div class="lc-seller">${isOwn ? 'Your listing' : esc(l.sellerName)}</div>
+      ${l.category ? `<div style="margin-top:3px">${categoryBadge(l.category)}</div>` : ''}
       ${days !== null && days >= 0 && days <= 14 ? `<div class="text-xs text-warning" style="margin-top:2px">Expires in ${days}d</div>` : ''}
       ${days !== null && days < 0 ? `<div class="text-xs text-danger" style="margin-top:2px">Expired</div>` : ''}
     </div>
     <div class="lc-right">
+      <div class="lc-original">${formatCurrency(l.originalValue, l.currency, false)}</div>
       <div class="lc-price-row">
         <div class="lc-price">${formatCurrency(l.sellingPrice, l.currency, false)}</div>
         ${disc > 0 ? `<div class="discount-badge">-${disc}%</div>` : ''}
       </div>
-      <div class="lc-original">${formatCurrency(l.originalValue, l.currency, false)}</div>
     </div>
   </div>`;
 }
@@ -34,6 +36,7 @@ export function listingCard(l, isOwn = false) {
 export function viewMarketplace() {
   const tab = state.marketplaceTab || 'browse';
   const q   = state.searchQuery.toLowerCase();
+  const catFilter = state.marketplaceCategoryFilter || 'All';
   const uid = state.currentUser.id;
   const friendIds        = state.friendIds;
   const trustedNetworkIds = state.trustedNetworkIds;
@@ -42,6 +45,7 @@ export function viewMarketplace() {
   // listings are boosted to the top but strangers' are included too.
   let browseListings = state.listings.filter(l => l.sellerId !== uid && l.visibility === 'public');
   if (q) browseListings = browseListings.filter(l => l.brand.toLowerCase().includes(q));
+  if (catFilter !== 'All') browseListings = browseListings.filter(l => (l.category || 'Other') === catFilter);
   browseListings.sort((a, b) => {
     const aF = friendIds.includes(a.sellerId) ? 0 : 1;
     const bF = friendIds.includes(b.sellerId) ? 0 : 1;
@@ -53,6 +57,7 @@ export function viewMarketplace() {
   // still belongs here too, direct friends surfaced first.
   let communityListings = state.listings.filter(l => l.sellerId !== uid && trustedNetworkIds.includes(l.sellerId));
   if (q) communityListings = communityListings.filter(l => l.brand.toLowerCase().includes(q));
+  if (catFilter !== 'All') communityListings = communityListings.filter(l => (l.category || 'Other') === catFilter);
   communityListings.sort((a, b) => {
     const aF = friendIds.includes(a.sellerId) ? 0 : 1;
     const bF = friendIds.includes(b.sellerId) ? 0 : 1;
@@ -71,21 +76,23 @@ export function viewMarketplace() {
     </div>
 
     ${tab === 'browse' ? `
-    <div class="search-bar" style="margin-bottom:16px">
+    <div class="search-bar" style="margin-bottom:12px">
       <span class="search-icon">${icon.search}</span>
       <input type="search" placeholder="Search brand…" value="${esc(state.searchQuery)}" data-search="marketplace">
     </div>
+    <div style="margin-bottom:16px">${categoryFilterDropdown(['All', ...CATEGORIES], catFilter, 'market-cat')}</div>
     ${browseListings.length > 0
       ? browseListings.map(l => listingCard(l)).join('')
-      : `<div class="empty-state"><div class="empty-icon">${navIcons.marketplace}</div><h3>${q?'No results':'Marketplace is empty'}</h3><p>${q?'Try a different search term':'Be the first to list a voucher for sale'}</p></div>`
+      : `<div class="empty-state"><div class="empty-icon">${navIcons.marketplace}</div><h3>${q||catFilter!=='All'?'No results':'Marketplace is empty'}</h3><p>${q||catFilter!=='All'?'Try a different search or filter':'Be the first to list a voucher for sale'}</p></div>`
     }
     ` : tab === 'community' ? `
     ${trustedNetworkIds.length > 0 ? `<div class="sell-hint">${icon.info} Trusted Community shows listings from your friends and friends of friends.</div>` : ''}
     ${trustedNetworkIds.length > 0 ? `
-    <div class="search-bar" style="margin-bottom:16px">
+    <div class="search-bar" style="margin-bottom:12px">
       <span class="search-icon">${icon.search}</span>
       <input type="search" placeholder="Search brand…" value="${esc(state.searchQuery)}" data-search="marketplace">
     </div>
+    <div style="margin-bottom:16px">${categoryFilterDropdown(['All', ...CATEGORIES], catFilter, 'market-cat')}</div>
     ` : ''}
     ${communityListings.length > 0
       ? communityListings.map(l => listingCard(l)).join('')
@@ -98,9 +105,9 @@ export function viewMarketplace() {
          </div>`
       : `<div class="empty-state">
            <div class="empty-icon">${icon.tag}</div>
-           <h3>${q ? 'No results' : 'No listings from your network yet'}</h3>
-           <p>${q ? 'Try a different search term' : 'When someone in your network lists a voucher for resale, it shows up here.'}</p>
-           ${!q ? '<button class="btn btn-secondary" data-marketplace-tab="browse">Browse Marketplace</button>' : ''}
+           <h3>${q || catFilter !== 'All' ? 'No results' : 'No listings from your network yet'}</h3>
+           <p>${q || catFilter !== 'All' ? 'Try a different search or filter' : 'When someone in your network lists a voucher for resale, it shows up here.'}</p>
+           ${!q && catFilter === 'All' ? '<button class="btn btn-secondary" data-marketplace-tab="browse">Browse Marketplace</button>' : ''}
          </div>`
     }
     ` : `
@@ -144,11 +151,11 @@ export function viewListingDetail() {
   <main class="content">
     <div class="listing-detail-header">
       <div class="ld-brand">${esc(l.brand)}</div>
+      <div class="ld-original">${formatCurrency(l.originalValue, l.currency)} original value</div>
       <div class="ld-price-row">
         <div class="ld-price">${formatCurrency(l.sellingPrice, l.currency)}</div>
         ${disc > 0 ? `<div class="discount-badge">-${disc}%</div>` : ''}
       </div>
-      <div class="ld-original">${formatCurrency(l.originalValue, l.currency)} original value</div>
     </div>
 
     ${brandDesc ? `<p class="text-muted" style="font-size:0.875rem;margin-bottom:16px">${esc(brandDesc)}</p>` : ''}
@@ -181,6 +188,10 @@ export function viewListingDetail() {
     <a href="mailto:${esc(l.sellerEmail)}?subject=${encodeURIComponent('Interested in your ' + l.brand + ' voucher on VoucherWise')}" class="btn btn-primary btn-full" style="display:flex">
       ${icon.mail} Contact Seller
     </a>
+    ${state.interestedListingIds.has(l.id)
+      ? `<button type="button" class="btn btn-ghost btn-full" style="margin-top:10px" disabled>${icon.check} Seller notified</button>`
+      : `<button type="button" class="btn btn-secondary btn-full" style="margin-top:10px" data-action="express-interest" data-id="${esc(l.id)}">${icon.bell} I'm Interested</button>`
+    }
     `}
   </main>
   ${renderBottomNav()}`;

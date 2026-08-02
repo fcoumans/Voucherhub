@@ -27,6 +27,24 @@ export async function fetchPendingGifts() {
   state.pendingGifts = data || [];
 }
 
+// Pending *and* claimed gifts this user has sent — powers the Wallet
+// "Gifted" tab, which (unlike Pending Gifts) also shows gifts a friend has
+// already claimed. The voucher_brand/value/currency/value_description
+// columns are a snapshot taken at send time (voucher_gifts_snapshot_voucher
+// trigger), since claim_voucher_gift transfers vouchers.user_id to the
+// recipient and this user loses RLS-visible access to the voucher row.
+export async function fetchSentGifts() {
+  if (!state.currentUser) return;
+  const { data, error } = await supabase
+    .from('voucher_gifts')
+    .select('id, voucher_id, status, created_at, claimed_at, voucher_brand, voucher_value, voucher_currency, voucher_value_description')
+    .eq('sender_id', state.currentUser.id)
+    .in('status', ['pending', 'claimed'])
+    .order('created_at', { ascending: false });
+  if (error) { console.error('fetchSentGifts error:', error); return; }
+  state.sentGifts = data || [];
+}
+
 /* ============================================================
    SEND
    ============================================================ */

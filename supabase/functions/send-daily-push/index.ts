@@ -131,6 +131,18 @@ Deno.serve(async (req) => {
       voucher_id: voucher.id,
       days_before: days,
     });
+
+    // Same event, mirrored into the in-app Notifications tab — pushed_at
+    // set immediately since sendPush() above already delivered it.
+    await supabase.from('activity_notifications').insert({
+      user_id:   voucher.user_id,
+      type:      'expiry',
+      title,
+      body,
+      link_view: 'voucher-detail',
+      link_id:   voucher.id,
+      pushed_at: new Date().toISOString(),
+    });
   }
 
   // --- Manual reminders ---
@@ -159,11 +171,9 @@ Deno.serve(async (req) => {
 
     const brand = voucher?.brand || 'voucher';
     const expiryPhrase = voucher?.expiration_date ? describeExpiry(daysUntil(voucher.expiration_date)) : null;
-    const payload = JSON.stringify({
-      title: 'Reminder',
-      body: `Your ${brand} voucher ${expiryPhrase ?? 'is waiting for you'}!`,
-      url: `/`,
-    });
+    const title = 'Reminder';
+    const body = `Your ${brand} voucher ${expiryPhrase ?? 'is waiting for you'}!`;
+    const payload = JSON.stringify({ title, body, url: `/` });
 
     const n = await sendPush(r.user_id, payload);
     sent += n;
@@ -172,7 +182,41 @@ Deno.serve(async (req) => {
       .from('notifications')
       .update({ sent: true, sent_at: new Date().toISOString() })
       .eq('id', r.id);
+
+    await supabase.from('activity_notifications').insert({
+      user_id:   r.user_id,
+      type:      'expiry',
+      title,
+      body,
+      link_view: 'voucher-detail',
+      link_id:   r.voucher_id,
+      pushed_at: new Date().toISOString(),
+    });
   }
 
-  return new Response(JSON.stringify({ sent, skipped, manualProcessed: manualReminders?.length ?? 0 }), { status: 200 });
+  // --- Flush activity notifications from instant, client-triggered events
+  // (friend request, referral used, listing interest) that haven't been
+  // pushed yet. These are written immediately by their notify_* RPCs when
+  // the event happens; this run is what actually delivers them as push,
+  // on the same cadence as everything else this function sends. ---
+  const { data: unpushed, error: uErr } = await supabase
+    .from('activity_notifications')
+    .select('id, user_id, title, body, link_view, link_id')
+    .is('pushed_at', null)
+    .neq('type', 'expiry');
+
+  if (uErr) console.error('fetchUnpushed error:', uErr.message);
+
+  for (const n of (unpushed ?? [])) {
+    const payload = JSON.stringify({ title: n.title, body: n.body, url: '/' });
+    const count = await sendPush(n.user_id, payload);
+    sent += count;
+
+    await supabase
+      .from('activity_notifications')
+      .update({ pushed_at: new Date().toISOString() })
+      .eq('id', n.id);
+  }
+
+  return new Response(JSON.stringify({ sent, skipped, manualProcessed: manualReminders?.length ?? 0, activityFlushed: unpushed?.length ?? 0 }), { status: 200 });
 });

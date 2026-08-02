@@ -81,6 +81,7 @@ export const icon = {
   camera: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>`,
   file:   `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>`,
   gift:   `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5"/><line x1="12" y1="22" x2="12" y2="7"/><path d="M12 7H7.5a2.5 2.5 0 010-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 000-5C13 2 12 7 12 7z"/></svg>`,
+  sort:   `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 8 4-4 4 4"/><path d="M7 4v16"/><path d="m21 16-4 4-4-4"/><path d="M17 20V4"/></svg>`,
   thumbsUp:   `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 9V5a3 3 0 00-3-3l-4 9v11h11.28a2 2 0 002-1.7l1.38-9a2 2 0 00-2-2.3z"/><path d="M7 22H4a2 2 0 01-2-2v-7a2 2 0 012-2h3"/></svg>`,
   thumbsDown: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 15v4a3 3 0 003 3l4-9V2H5.72a2 2 0 00-2 1.7l-1.38 9a2 2 0 002 2.3z"/><path d="M17 2h3a2 2 0 012 2v7a2 2 0 01-2 2h-3"/></svg>`,
 };
@@ -97,10 +98,11 @@ export const navIcons = {
 export function renderBottomNav() {
   const items = [
     { id: 'home', label: 'Home' },
-    { id: 'discover', label: 'Discover' },
     { id: 'vouchers', label: 'Wallet' },
     { id: 'marketplace', label: 'Market' },
     { id: 'referrals', label: 'Referrals' },
+    { id: 'discover', label: 'Discover' },
+    { id: 'profile', label: 'Profile' },
   ];
   return `
   <nav class="bottom-nav">
@@ -115,28 +117,19 @@ export function renderBottomNav() {
   </nav>`;
 }
 
-const LOGO_MARK_SVG = (size) => `
-  <svg width="${size}" height="${size}" viewBox="0 0 72 72" fill="none">
-    <rect width="72" height="72" rx="18" fill="#13B5A2"/>
-    <rect x="11" y="8" width="50" height="30" rx="9" fill="#2BD4BE" opacity="0.6"/>
-    <rect x="6" y="26" width="60" height="38" rx="11" fill="white"/>
-    <rect x="38" y="35" width="22" height="14" rx="7" fill="#11233F"/>
-  </svg>`;
-
-const LOGO_LOCKUP = `
-  <div style="flex:1;display:flex;align-items:center;justify-content:center;gap:8px">
-    ${LOGO_MARK_SVG(28)}
-    <span style="font-size:1.0625rem;font-weight:800;letter-spacing:-0.01em"><span style="color:#11233F">Voucher</span><span style="color:#13B5A2">Wise</span></span>
-  </div>`;
-
+// `backView`/`backParams` only need to be truthy to show the back arrow —
+// the arrow itself always returns to whatever page was actually on screen
+// before (router.js's goBack/navStack), not to this fixed destination. Kept
+// as params so call sites don't need to change just to show/hide the arrow.
 export function renderHeader(title, backView, backParams = {}, rightAction = '') {
-  const centerContent = title === 'VoucherWise'
-    ? LOGO_LOCKUP
+  const isHome = title === 'VoucherWise';
+  const centerContent = isHome
+    ? `<span class="header-brand">VoucherWise</span>`
     : `<span class="header-title">${esc(title)}</span>`;
   return `
-  <header class="app-header">
+  <header class="app-header ${isHome ? 'app-header--brand' : ''}">
     <div class="header-left">
-      ${backView ? `<button class="btn-back" data-nav="${backView}" ${backParams.id ? `data-id="${esc(backParams.id)}"` : ''}>${icon.back}</button>` : ''}
+      ${backView ? `<button class="btn-back" data-back="1">${icon.back}</button>` : ''}
     </div>
     ${centerContent}
     <div class="header-right">${rightAction}</div>

@@ -94,6 +94,12 @@ export const formatMonthYear = (dateStr) => {
   return `${String(m).padStart(2,'0')}-${y}`;
 };
 
+export const formatFullDate = (dateStr) => {
+  if (!dateStr) return '';
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+};
+
 /* ============================================================
    FETCH
    ============================================================ */
@@ -249,7 +255,8 @@ export async function incrementCopyCount(id) {
   if (!v) return;
   const newCount = (v.copyCount || 0) + 1;
   const { error } = await supabase.from('vouchers').update({ copy_count: newCount }).eq('id', id);
-  if (error) { console.error('incrementCopyCount error:', error); }
+  if (error) { console.error('incrementCopyCount error:', error); return; }
+  v.copyCount = newCount;
 }
 
 /* ============================================================

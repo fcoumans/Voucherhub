@@ -4,7 +4,7 @@ import { state, CATEGORIES } from '../../core/state.js';
 import { esc } from '../../core/dom.js';
 import { getBrandDescription } from '../../core/brands.js';
 import { icon, avatar, renderHeader, renderBottomNav, navIcons, brandAutocomplete } from '../../core/ui.js';
-import { getReferralCategories } from './referrals.js';
+import { categoryBadge, categoryFilterDropdown } from '../../core/categories.js';
 
 /* ============================================================
    VIEW: REFERRALS
@@ -20,8 +20,8 @@ function referralCard(r, isOwn = false) {
         <div class="rc-brand">${esc(r.brand)}</div>
         <div class="rc-owner">${isOwn ? 'Your code' : esc(r.ownerName || 'Community')}
           ${r.visibility === 'friends' ? ' · <span class="badge badge-primary" style="font-size:0.6rem;padding:2px 5px">Friends</span>' : ''}
-          ${r.category && r.category !== 'Other' ? ` · <span class="badge badge-gray" style="font-size:0.6rem;padding:2px 5px">${esc(r.category)}</span>` : ''}
         </div>
+        ${r.category ? `<div style="margin-top:5px">${categoryBadge(r.category)}</div>` : ''}
       </div>
       <div style="display:flex;align-items:center;gap:4px">
         ${isOwn ? `
@@ -32,7 +32,7 @@ function referralCard(r, isOwn = false) {
     </div>
     <div class="rc-code-row">
       <span class="rc-code">${esc(r.code)}</span>
-      <button class="btn btn-secondary btn-sm" data-action="copy" data-copy="${esc(r.code)}" data-toast="Code copied!">${icon.copy} Copy</button>
+      <button class="btn btn-secondary btn-sm" data-action="copy" data-copy="${esc(r.code)}" data-copied-label="Code copied">${icon.copy} Copy</button>
     </div>
     ${r.link ? `<a href="${esc(r.link)}" target="_blank" rel="noopener" class="btn btn-outline btn-sm btn-full" style="margin-bottom:8px">${icon.link} Open Referral Link</a>` : ''}
     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px">
@@ -135,10 +135,6 @@ export function viewReferrals() {
   }
   const brandList = [...brandMap.entries()].sort((a, b) => a[0].localeCompare(b[0]));
 
-  const categoryChips = getReferralCategories().map(c =>
-    `<button class="chip ${catFilter===c?'active':''}" data-referral-cat="${esc(c)}">${c}</button>`
-  ).join('');
-
   const brandCards = brandList.map(([brandName, codes]) => `
     <div class="voucher-card" style="cursor:pointer" data-referral-brand="${esc(brandName)}">
       ${avatar(brandName, 42)}
@@ -158,7 +154,7 @@ export function viewReferrals() {
       <span class="search-icon">${icon.search}</span>
       <input type="search" placeholder="Search brand…" value="${esc(state.searchQuery)}" data-search="referrals">
     </div>
-    <div class="filter-chips" style="margin-bottom:16px">${categoryChips}</div>
+    <div style="margin-bottom:16px">${categoryFilterDropdown(['All', ...CATEGORIES], catFilter, 'referral-cat')}</div>
     ${brandList.length > 0
       ? `<div class="voucher-list">${brandCards}</div>`
       : `<div class="empty-state">
@@ -188,7 +184,7 @@ export function viewReferralForm() {
     <form id="form-referral" autocomplete="off">
       ${r ? `<input type="hidden" name="referralId" value="${esc(r.id)}">` : ''}
       <div class="form-group">
-        <label>Brand / App <span style="color:var(--danger)">*</span></label>
+        <label>Brand / App <span style="color:var(--warning)">*</span></label>
         ${brandAutocomplete(r?.brand || '')}
       </div>
       <div class="form-group">

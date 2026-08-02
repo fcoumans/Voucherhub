@@ -17,10 +17,12 @@ import { viewHome, viewVouchers, viewVoucherForm, viewVoucherDetail } from '../f
 import { fetchListings } from '../features/marketplace/marketplace.js';
 import { viewMarketplace, viewListingDetail } from '../features/marketplace/views.js';
 import { fetchFriendIds, fetchFriends, fetchPendingRequests } from '../features/social/friends.js';
-import { fetchPendingGifts, tryClaimPendingGift } from '../features/social/gifting.js';
+import { fetchPendingGifts, fetchSentGifts, tryClaimPendingGift } from '../features/social/gifting.js';
 import { viewPendingGifts, viewFriends } from '../features/social/views.js';
 import { fetchReminders } from '../features/notifications/reminders.js';
 import { updatePushStatusLabel } from '../features/notifications/push.js';
+import { fetchActivityNotifications } from '../features/notifications/activity.js';
+import { viewNotifications } from '../features/notifications/views.js';
 import { fetchDiscoveryBrands } from '../features/discover/discover.js';
 import { viewDiscover, viewDiscoverDetail } from '../features/discover/views.js';
 import { fetchReferrals } from '../features/referrals/referrals.js';
@@ -28,7 +30,15 @@ import { viewReferrals, viewReferralForm } from '../features/referrals/views.js'
 import { viewProfile } from './profile-view.js';
 import { attachListeners } from './events.js';
 
-export async function go(view, params = {}) {
+export async function go(view, params = {}, opts = {}) {
+  // Real "where did I come from" history for the back button, instead of
+  // each view hardcoding a single fixed parent. Skipped when this call is
+  // itself a back-navigation (goBack) or an explicit replace, so going back
+  // doesn't re-push the page you're leaving.
+  if (!opts.fromBack && !opts.replace && state.currentUser) {
+    state.navStack.push({ view: state.view, params: state.params });
+    if (state.navStack.length > 30) state.navStack.shift();
+  }
   state.view = view;
   state.params = params;
   state.searchQuery = '';
@@ -39,10 +49,10 @@ export async function go(view, params = {}) {
     case 'home':
       // vouchers first so mapReminder can look up brand names
       await fetchVouchers();
-      await Promise.all([fetchReminders(), fetchListings(), fetchFriendIds(), fetchPendingRequests(), fetchPendingGifts()]);
+      await Promise.all([fetchReminders(), fetchListings(), fetchFriendIds(), fetchPendingRequests(), fetchPendingGifts(), fetchActivityNotifications()]);
       break;
     case 'vouchers':
-      await Promise.all([fetchVouchers(), fetchPendingGifts()]);
+      await Promise.all([fetchVouchers(), fetchPendingGifts(), fetchSentGifts()]);
       break;
     case 'pending-gifts':
       await Promise.all([fetchVouchers(), fetchPendingGifts()]);
@@ -101,13 +111,23 @@ export async function go(view, params = {}) {
     case 'friends':
       await Promise.all([fetchFriends(), fetchPendingRequests()]);
       break;
+    case 'notifications':
+      await fetchActivityNotifications();
+      break;
     case 'profile':
-      await Promise.all([fetchVouchers(), fetchListings(), fetchFriendIds(), fetchPendingRequests(), fetchPendingGifts()]);
+      await Promise.all([fetchVouchers(), fetchListings(), fetchFriendIds(), fetchPendingRequests(), fetchPendingGifts(), fetchActivityNotifications()]);
       await fetchReferrals();
       break;
   }
   render();
   window.scrollTo(0, 0);
+}
+
+// Used by the header's back arrow — returns to the page that was actually
+// on screen before, rather than a per-view hardcoded parent.
+export function goBack() {
+  const prev = state.navStack.pop();
+  go(prev ? prev.view : 'home', prev ? prev.params : {}, { fromBack: true });
 }
 
 const VIEWS = {
@@ -128,6 +148,7 @@ const VIEWS = {
   referrals:        viewReferrals,
   'referral-form':  viewReferralForm,
   friends:          viewFriends,
+  notifications:    viewNotifications,
   profile:          viewProfile,
 };
 

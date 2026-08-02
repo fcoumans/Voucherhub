@@ -7,13 +7,13 @@
 // since they're single call sites with no reuse.
 import { supabase } from '../lib/supabase.js';
 import { state } from './state.js';
-import { formData, normalizeAmount } from './dom.js';
+import { formData, normalizeAmount, formatCurrency, esc, mountOverlay, closeOverlay } from './dom.js';
 import { showToast } from './toast.js';
-import { copyText } from './clipboard.js';
+import { copyText, flashCopied } from './clipboard.js';
 import { showConfirm } from './confirm-dialog.js';
 import { fetchBrands } from './brands.js';
 import { icon, showBrandSuggestions } from './ui.js';
-import { go, render } from './router.js';
+import { go, goBack, render } from './router.js';
 import { mapUser, markActivity, login, register, logout } from '../features/auth/auth.js';
 import { voucherFormState } from '../features/wallet/voucher-form-state.js';
 import {
@@ -23,11 +23,12 @@ import {
 } from '../features/wallet/vouchers.js';
 import { maybeAutoDetectBarcode, renderBarcodeGroupNow, showAddVoucherMenu } from '../features/wallet/scanning.js';
 import { attachmentTileHtml } from '../features/wallet/views.js';
-import { fetchListings, listForSale, unlist } from '../features/marketplace/marketplace.js';
+import { fetchListings, listForSale, unlist, expressInterest } from '../features/marketplace/marketplace.js';
 import { fetchFriendIds, fetchPendingRequests, addFriend, acceptFriendRequest, declineFriendRequest, removeFriend } from '../features/social/friends.js';
 import { sendVoucherGift, cancelVoucherGift, showGiftShareScreen } from '../features/social/gifting.js';
-import { fetchReminders, setReminder, dismissReminder } from '../features/notifications/reminders.js';
+import { fetchReminders } from '../features/notifications/reminders.js';
 import { subscribeToPush, unsubscribeFromPush, getPushStatus, updatePushStatusLabel } from '../features/notifications/push.js';
+import { markActivityNotificationRead, markAllActivityNotificationsRead } from '../features/notifications/activity.js';
 import { fetchReferrals, saveReferral, updateReferral, deleteReferral, toggleReferralUse } from '../features/referrals/referrals.js';
 
 let _listenersAttached = false;
@@ -85,6 +86,9 @@ function handleClick(e) {
     return;
   }
 
+  const backEl = e.target.closest('[data-back]');
+  if (backEl) { e.preventDefault(); goBack(); return; }
+
   const navEl = e.target.closest('[data-nav]');
   if (navEl) {
     e.preventDefault();
@@ -103,24 +107,92 @@ function handleClick(e) {
     return;
   }
 
-  const chipEl = e.target.closest('[data-filter]');
-  if (chipEl) { state.activeFilter = chipEl.dataset.filter; render(); return; }
-
   const mktTab = e.target.closest('[data-marketplace-tab]');
   if (mktTab) { state.marketplaceTab = mktTab.dataset.marketplaceTab; render(); return; }
 
   const refTab = e.target.closest('[data-referral-tab]');
   if (refTab) { state.referralTab = refTab.dataset.referralTab; render(); return; }
 
-  const refCat = e.target.closest('[data-referral-cat]');
-  if (refCat) { state.referralCategoryFilter = refCat.dataset.referralCat; render(); return; }
-
   const refBrand = e.target.closest('[data-referral-brand]');
   if (refBrand) { state.referralBrandFilter = refBrand.dataset.referralBrand; render(); return; }
 
+  const walletCat = e.target.closest('[data-wallet-cat]');
+  if (walletCat) { state.walletCategoryFilter = walletCat.dataset.walletCat; render(); return; }
+
+  const refCat = e.target.closest('[data-referral-cat]');
+  if (refCat) { state.referralCategoryFilter = refCat.dataset.referralCat; render(); return; }
+
+  const discCat = e.target.closest('[data-discover-cat]');
+  if (discCat) { state.discoveryCategoryFilter = discCat.dataset.discoverCat; render(); return; }
+
+  const marketCat = e.target.closest('[data-market-cat]');
+  if (marketCat) { state.marketplaceCategoryFilter = marketCat.dataset.marketCat; render(); return; }
 
   const actionEl = e.target.closest('[data-action]');
   if (actionEl) { handleAction(actionEl, e); return; }
+}
+
+// Sell and Deduct both need more room than a yes/no confirm (a price field,
+// a visibility picker, hints) — they use the same overlay/`.dialog` sheet as
+// Mark as Used, just with `.dialog-lg` for the extra breathing room, rather
+// than being inline forms that push the rest of the page down.
+function showSellSheet(id, v) {
+  const overlay = document.createElement('div');
+  overlay.className = 'overlay';
+  overlay.innerHTML = `
+  <div class="dialog dialog-lg">
+    <h3>Sell ${esc(v.brand)} Voucher</h3>
+    <div class="sell-hint">${icon.info} Buyer contacts you by email. No payment processing in MVP.</div>
+    <form id="form-sell">
+      <input type="hidden" name="voucherId" value="${esc(id)}">
+      <div class="form-group">
+        <label>Selling Price (${v.currency||'EUR'}) <span style="color:var(--warning)">*</span></label>
+        <input type="text" name="price" placeholder="e.g. 40,00" required autofocus>
+        <span class="form-hint">Original value: ${formatCurrency(v.value, v.currency)}</span>
+      </div>
+      <div class="form-group">
+        <label>Who can see this listing?</label>
+        <select name="visibility">
+          <option value="public">Public (visible to everyone browsing the marketplace)</option>
+          <option value="friends_only">Trusted Community only (friends &amp; friends of friends)</option>
+        </select>
+        <span class="form-hint">Trusted Community listings never appear in public Browse</span>
+      </div>
+      <div class="dialog-actions">
+        <button type="button" class="btn btn-ghost" id="sell-cancel-btn">Cancel</button>
+        <button type="submit" class="btn btn-primary">List for Sale</button>
+      </div>
+    </form>
+  </div>`;
+  const close = () => closeOverlay(overlay);
+  if (!mountOverlay(overlay, close)) return;
+  overlay.querySelector('#sell-cancel-btn').addEventListener('click', close);
+  overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
+}
+
+function showDeductSheet(id, v) {
+  const overlay = document.createElement('div');
+  overlay.className = 'overlay';
+  overlay.innerHTML = `
+  <div class="dialog dialog-lg">
+    <h3>Deduct Amount Used</h3>
+    <form id="form-deduct">
+      <input type="hidden" name="voucherId" value="${esc(id)}">
+      <div class="form-group">
+        <label>Amount spent (${v.currency||'EUR'}) <span style="color:var(--warning)">*</span></label>
+        <input type="text" name="amount" placeholder="e.g. 12,50" required autofocus>
+        <span class="form-hint">Remaining: ${formatCurrency(v.balance ?? v.value, v.currency)}</span>
+      </div>
+      <div class="dialog-actions">
+        <button type="button" class="btn btn-ghost" id="deduct-cancel-btn">Cancel</button>
+        <button type="submit" class="btn btn-primary">Update Balance</button>
+      </div>
+    </form>
+  </div>`;
+  const close = () => closeOverlay(overlay);
+  if (!mountOverlay(overlay, close)) return;
+  overlay.querySelector('#deduct-cancel-btn').addEventListener('click', close);
+  overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
 }
 
 async function handleAction(el, e) {
@@ -130,14 +202,18 @@ async function handleAction(el, e) {
   switch (action) {
     case 'copy':
       e.preventDefault();
-      copyText(el.dataset.copy, el.dataset.toast || 'Copied!');
+      copyText(el.dataset.copy);
+      flashCopied(el, { label: el.dataset.copiedLabel || 'Copied' });
       break;
 
     case 'copy-voucher-code':
       e.preventDefault();
-      copyText(el.dataset.copy, 'Code copied!');
+      copyText(el.dataset.copy);
       incrementCopyCount(id);
-      render();
+      // Defer the re-render (which updates the "Copied N times" count below)
+      // until the button's own "Copied" state reverts, so it doesn't get
+      // wiped out mid-animation by the DOM rebuild.
+      flashCopied(el, { label: 'Code copied', onRevert: render });
       break;
 
     case 'mark-used':
@@ -148,42 +224,36 @@ async function handleAction(el, e) {
       markUnused(id);
       break;
 
-    case 'show-sell':
-      state.params = { id, sellForm: true };
-      render();
+    case 'show-sell': {
+      const v = state.vouchers.find(x => x.id === id);
+      if (v) showSellSheet(id, v);
       break;
+    }
 
-    case 'hide-sell':
-      state.params = { id };
-      render();
+    case 'show-deduct': {
+      const v = state.vouchers.find(x => x.id === id);
+      if (v) showDeductSheet(id, v);
       break;
-
-    case 'show-deduct':
-      state.params = { id, deductForm: true };
-      render();
-      break;
-
-    case 'hide-deduct':
-      state.params = { id };
-      render();
-      break;
-
-    case 'show-reminder':
-      state.params = { id, reminderForm: true };
-      render();
-      break;
-
-    case 'hide-reminder':
-      state.params = { id };
-      render();
-      break;
-
-    case 'dismiss-reminder':
-      dismissReminder(id);
-      break;
+    }
 
     case 'unlist':
       showConfirm({ title: 'Remove Listing?', message: 'Your voucher will be removed from the marketplace.', confirmLabel: 'Remove', onConfirm: () => unlist(id) });
+      break;
+
+    case 'express-interest':
+      expressInterest(id);
+      break;
+
+    case 'open-notification': {
+      markActivityNotificationRead(id);
+      const linkView = el.dataset.linkView;
+      const linkId   = el.dataset.linkId;
+      if (linkView) go(linkView, linkId ? { id: linkId } : {});
+      break;
+    }
+
+    case 'mark-all-notifications-read':
+      markAllActivityNotificationsRead();
       break;
 
     case 'clear-expiry-date': {
@@ -332,7 +402,7 @@ async function handleAction(el, e) {
       const { error: rErr } = await supabase.auth.resend({ type: 'signup', email });
       if (btn) { btn.disabled = false; btn.textContent = 'Resend Email'; }
       if (msg) {
-        if (rErr) { msg.style.color = 'var(--danger)'; msg.textContent = rErr.message; }
+        if (rErr) { msg.style.color = 'var(--warning)'; msg.textContent = rErr.message; }
         else { msg.style.color = 'var(--success)'; msg.textContent = 'Email sent! Check your inbox.'; }
       }
       break;
@@ -359,7 +429,7 @@ async function handleAction(el, e) {
     }
 
     case 'unfollow':
-      removeFriend(id);
+      showConfirm({ title: 'Remove Friend?', message: "They'll no longer be in your Trusted Community and won't be able to see your friends-only listings.", confirmLabel: 'Remove', onConfirm: () => removeFriend(id) });
       break;
 
     case 'accept-request':
@@ -408,11 +478,11 @@ function handleChange(e) {
   const sortEl = e.target.closest('[data-sort]');
   if (sortEl) { state.activeSort = sortEl.value; render(); }
 
-  const discCatSel = e.target.closest('[data-discover-cat-select]');
-  if (discCatSel) { state.discoveryCategoryFilter = discCatSel.value; render(); return; }
-
   const discRegionSel = e.target.closest('[data-discover-region-select]');
   if (discRegionSel) { state.discoveryRegionFilter = discRegionSel.value; render(); return; }
+
+  const statusSel = e.target.closest('[data-status-select]');
+  if (statusSel) { state.activeFilter = statusSel.value; render(); return; }
 
   if (e.target.id === 'voucher-file-input') {
     const grid = document.getElementById('attachment-grid');
@@ -584,7 +654,17 @@ async function handleSubmit(e) {
       voucherFormState.pendingNewFiles = [];
       voucherFormState.removedFileIds  = [];
       showToast(data.id ? 'Voucher updated' : 'Voucher saved');
-      go(data.id ? 'voucher-detail' : 'vouchers', data.id ? { id: voucherId } : {});
+      const destView   = data.id ? 'voucher-detail' : 'vouchers';
+      const destParams = data.id ? { id: voucherId } : {};
+      // If the page we're about to land on is exactly the one the nav stack
+      // would send "back" to (the common case: edit a voucher, save, land
+      // back on that same voucher's detail page), that stack entry is now
+      // stale — pop it so back leaves in one press instead of re-landing here.
+      const top = state.navStack[state.navStack.length - 1];
+      if (top && top.view === destView && (top.params?.id || null) === (destParams.id || null)) {
+        state.navStack.pop();
+      }
+      go(destView, destParams, { replace: true });
     } catch (err) {
       console.error('saveVoucher exception:', err);
       showToast('Error saving voucher');
@@ -597,6 +677,7 @@ async function handleSubmit(e) {
     const d = formData(form);
     const price = parseFloat(normalizeAmount(d.price));
     if (!price || price <= 0) return;
+    closeOverlay(form.closest('.overlay'));
     listForSale(d.voucherId, price, d.visibility);
     return;
   }
@@ -604,15 +685,16 @@ async function handleSubmit(e) {
   if (form.id === 'form-deduct') {
     const d = formData(form);
     if (!d.amount) return;
-    await deductBalance(d.voucherId, normalizeAmount(d.amount));
-    return;
-  }
-
-  if (form.id === 'form-reminder') {
-    const d = formData(form);
-    if (!d.reminderDateTime) return;
-    const [date, time] = d.reminderDateTime.split('T');
-    await setReminder(d.voucherId, date, time);
+    const amount = normalizeAmount(d.amount);
+    const v = state.vouchers.find(x => x.id === d.voucherId);
+    closeOverlay(form.closest('.overlay'));
+    showConfirm({
+      title: 'Deduct from balance?',
+      message: `${formatCurrency(parseFloat(amount), v?.currency)} will be deducted from this voucher's balance. This cannot be undone.`,
+      confirmLabel: 'Deduct',
+      confirmClass: 'btn-primary',
+      onConfirm: () => deductBalance(d.voucherId, amount),
+    });
     return;
   }
 

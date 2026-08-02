@@ -10,12 +10,6 @@ import { showToast } from '../../core/toast.js';
 import { getBrandByName, ensureBrand } from '../../core/brands.js';
 import { go, render } from '../../core/router.js';
 
-export function getReferralCategories() {
-  const cats = [...new Set(state.referrals.map(r => r.category).filter(c => c && c !== 'Other'))].sort();
-  if (state.referrals.some(r => !r.category || r.category === 'Other')) cats.push('Other');
-  return ['All', ...cats];
-}
-
 /* ============================================================
    REFERRAL FIELD MAPPING (Supabase ↔ frontend)
    ============================================================ */
@@ -178,6 +172,8 @@ export async function toggleReferralUse(id) {
   } else {
     const { error } = await supabase.from('referral_code_uses').insert({ referral_id: id, user_id: uid });
     if (error) { console.error('toggleReferralUse insert error:', error); showToast('Error updating use count'); return; }
+    const { error: notifyError } = await supabase.rpc('notify_referral_used', { p_referral_id: id });
+    if (notifyError) console.error('notify_referral_used error:', notifyError);
     state.myReferralUses.add(id);
     state.referrals = state.referrals.map(r => r.id === id ? { ...r, usedCount: (r.usedCount || 0) + 1 } : r);
   }

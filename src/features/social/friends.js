@@ -84,16 +84,18 @@ export async function addFriend(email) {
   if (!found) return 'No user found with that email.';
   if (found.id === state.currentUser.id) return "That's your own email.";
   if (state.friendIds.includes(found.id)) return 'Already friends with this person.';
-  const { error } = await supabase.from('friendships').insert({
+  const { data, error } = await supabase.from('friendships').insert({
     requester_id: state.currentUser.id,
     receiver_id:  found.id,
     status:       'pending',
-  });
+  }).select('id').single();
   if (error) {
     if (error.code === '23505') return 'Friend request already sent.';
     console.error('addFriend error:', error);
     return 'Error sending request.';
   }
+  const { error: notifyError } = await supabase.rpc('notify_friend_request', { p_friendship_id: data.id });
+  if (notifyError) console.error('notify_friend_request error:', notifyError);
   const displayName = fullName(found) || found.email;
   showToast(`Friend request sent to ${displayName}`);
   return null;

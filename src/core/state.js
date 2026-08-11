@@ -36,4 +36,6 @@ export const state = {
   discoveryRegionFilter: 'All',
   interestedListingIds: new Set(), // marketplace_listings ids the current user has already tapped "I'm interested" on this session — in-memory, no DB column
   activityNotifications: [], // activity_notifications rows — powers the Notifications tab
+  onboardingSlide:     0,        // current slide index on the pre-signup value carousel (views/onboarding.js)
+  onboardingInterests: new Set(), // category names toggled on the post-signup "what are you into?" screen, before it's saved to public.users.interests
 };

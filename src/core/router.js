@@ -6,6 +6,7 @@ import { state } from './state.js';
 import { showToast } from './toast.js';
 import { fetchBrands } from './brands.js';
 import { viewAuth, viewWelcome, viewVerifyEmail, viewForgotPassword, viewResetPassword } from '../features/auth/views.js';
+import { viewOnboardingIntro, viewOnboardingInterests } from '../features/onboarding/views.js';
 import { mapUser, touchLastActive } from '../features/auth/auth.js';
 import {
   fetchVouchers, fetchVoucherFiles, fileKind, randomId,
@@ -132,6 +133,8 @@ export function goBack() {
 
 const VIEWS = {
   welcome:          viewWelcome,
+  onboarding:              viewOnboardingIntro,
+  'onboarding-interests':  viewOnboardingInterests,
   auth:             viewAuth,
   'verify-email':   viewVerifyEmail,
   'forgot-password': viewForgotPassword,
@@ -190,11 +193,21 @@ export async function init() {
   } else if (session) {
     state.currentUser = mapUser(session.user);
     touchLastActive(session.user.id);
-    state.view = 'home';
-    await tryClaimPendingGift();
-    // vouchers first so mapReminder can look up brand names
-    await fetchVouchers();
-    await Promise.all([fetchBrands(), fetchListings(), fetchFriendIds(), fetchPendingRequests(), fetchReminders(), fetchPendingGifts()]);
+    if (isEmailConfirm) {
+      // A brand-new signup just confirmed their email — send them through
+      // the "what are you into?" welcome-gift screen instead of straight to
+      // Home; a returning session resuming (isEmailConfirm false here) never
+      // sees it. See features/onboarding/onboarding.js.
+      state.view = 'onboarding-interests';
+      state.onboardingInterests = new Set();
+      await tryClaimPendingGift();
+    } else {
+      state.view = 'home';
+      await tryClaimPendingGift();
+      // vouchers first so mapReminder can look up brand names
+      await fetchVouchers();
+      await Promise.all([fetchBrands(), fetchListings(), fetchFriendIds(), fetchPendingRequests(), fetchReminders(), fetchPendingGifts()]);
+    }
   } else if (authError) {
     state.view = 'forgot-password';
   } else {
@@ -224,10 +237,16 @@ export async function init() {
     if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session && !state.currentUser && state.view !== 'reset-password') {
       state.currentUser = mapUser(session.user);
       touchLastActive(session.user.id);
-      state.view = 'home';
-      await tryClaimPendingGift();
-      await fetchVouchers();
-      await Promise.all([fetchBrands(), fetchListings(), fetchFriendIds(), fetchPendingRequests(), fetchReminders(), fetchPendingGifts()]);
+      if (isEmailConfirm) {
+        state.view = 'onboarding-interests';
+        state.onboardingInterests = new Set();
+        await tryClaimPendingGift();
+      } else {
+        state.view = 'home';
+        await tryClaimPendingGift();
+        await fetchVouchers();
+        await Promise.all([fetchBrands(), fetchListings(), fetchFriendIds(), fetchPendingRequests(), fetchReminders(), fetchPendingGifts()]);
+      }
       render();
       if (isEmailConfirm) {
         setTimeout(() => showToast('Email confirmed! Welcome to VoucherWise.'), 300);

@@ -66,7 +66,7 @@ export function viewWelcome() {
           </g>
 
           <g transform="translate(190,152) rotate(9)" filter="url(#welcome-shadow)">
-            <rect width="150" height="94" rx="14" fill="var(--secondary)"/>
+            <rect width="150" height="94" rx="14" fill="#F5883C"/>
             <circle cx="22" cy="22" r="8" fill="#FFFFFF" opacity="0.95"/>
             <rect x="16" y="65" width="64" height="7" rx="3.5" fill="#FFFFFF" opacity="0.55"/>
             <rect x="16" y="78" width="40" height="6" rx="3" fill="#FFFFFF" opacity="0.35"/>
@@ -90,7 +90,7 @@ export function viewWelcome() {
       <p class="welcome-desc">Unlock the full value of every voucher you own.</p>
 
       <div class="welcome-actions">
-        <button type="button" class="btn btn-dark btn-full" data-nav="auth" data-tab="signup">Get started</button>
+        <button type="button" class="btn btn-dark btn-full" data-nav="onboarding">Get started</button>
         <div class="welcome-secondary">
           Already have an account?
           <button type="button" class="link-btn" data-nav="auth" data-tab="login">Log in</button>

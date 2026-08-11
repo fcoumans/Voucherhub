@@ -12,12 +12,23 @@ export function uniqueEmail(prefix = 'test-user') {
 export async function signUp(page, { firstName, lastName, email, password }) {
   await page.goto('/');
   await page.getByRole('button', { name: 'Get started' }).click();
+  // Lands on the value carousel (see features/onboarding/views.js) — skip it,
+  // the flow itself is covered separately in onboarding.spec.js.
+  await page.getByRole('button', { name: 'Skip' }).click();
   await page.getByLabel('First Name').fill(firstName);
   await page.getByLabel('Last Name').fill(lastName);
   await page.getByLabel('Email').fill(email);
   await page.getByLabel('Password', { exact: true }).fill(password);
   await page.getByRole('button', { name: 'Create Account' }).click();
+  // A brand-new account lands on the "what are you into?" welcome-gift
+  // screen next (still features/onboarding/views.js) — skip it too, so
+  // every other spec's signUp() call reaches Home as before.
+  await page.getByRole('button', { name: 'Skip for now' }).click();
   await expect(page.locator('h2')).toContainText(firstName, { timeout: 10_000 });
+  // Skipping interests still shows the one-time "there's more to discover"
+  // nudge on Home (onboarding.js#showDiscoverySheet) — dismiss it so callers
+  // get a clean, clickable Home like before onboarding existed.
+  await page.getByRole('button', { name: 'Got it' }).click();
 }
 
 export async function logIn(page, { email, password }) {

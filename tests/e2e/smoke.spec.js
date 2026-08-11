@@ -17,7 +17,7 @@ test('smoke: every nav tab + profile renders without console errors', async ({ p
     await page.waitForTimeout(200);
   }
 
-  await page.locator('[data-nav="profile"]').click();
+  await page.getByRole('navigation').getByRole('button', { name: 'Profile' }).click();
   await expect(page.getByText('Log Out')).toBeVisible();
   await page.getByText('Friends', { exact: true }).click();
   await expect(page.getByText('Send Friend Request')).toBeVisible();

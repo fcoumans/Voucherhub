@@ -21,6 +21,7 @@ test('signing up with an already-registered email shows an error', async ({ page
 
   await secondPage.goto('/');
   await secondPage.getByRole('button', { name: 'Get started' }).click();
+  await secondPage.getByRole('button', { name: 'Skip' }).click();
   await secondPage.getByLabel('First Name').fill('Grace');
   await secondPage.getByLabel('Last Name').fill('Hopper');
   await secondPage.getByLabel('Email').fill(email);

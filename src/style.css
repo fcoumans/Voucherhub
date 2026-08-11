@@ -937,6 +937,335 @@ p { line-height: 1.5; }
   }
 }
 
+/* ============================================================
+   ONBOARDING — value carousel ("Get started") + post-signup
+   "what are you into?" interests screen
+   ============================================================ */
+.onboarding-screen {
+  min-height: 100dvh;
+  max-width: 480px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  padding: 16px 24px 32px;
+  background: var(--bg);
+}
+
+.onboarding-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 40px;
+}
+
+.onboarding-back { color: var(--text-muted); }
+.onboarding-back:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+
+.onboarding-skip {
+  color: var(--text-muted);
+  font-weight: 700;
+  font-size: 0.9375rem;
+  padding: 8px 4px;
+}
+
+/* Carousel slide */
+.onboarding-slide {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 20px;
+  padding: 24px 8px 40px;
+  opacity: 0;
+  transform: translateY(14px);
+  animation: onboardingSlideIn 0.55s var(--ease-out) forwards;
+}
+
+/* Each slide sets --slide-color/--slide-color-dark inline (see
+   ONBOARDING_SLIDES) so the glow, icon gradient, kicker, floating shapes and
+   active dot all key off one source of truth per pillar. */
+.onboarding-icon-wrap {
+  position: relative;
+  width: 176px;
+  height: 176px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 32% 28%, color-mix(in srgb, var(--slide-color) 30%, transparent) 0%, color-mix(in srgb, var(--slide-color) 10%, transparent) 60%, transparent 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: onboardingGlowPulse 3.6s var(--ease-in-out) infinite;
+}
+
+/* Small decorative dots orbiting the icon — pure atmosphere, aria-hidden by
+   virtue of being empty <span>s with no text. Each drifts on its own lazy
+   loop so the trio never reads as one mechanical unit. */
+.onboarding-shape {
+  position: absolute;
+  border-radius: 50%;
+  background: var(--slide-color);
+  opacity: 0.5;
+}
+
+.onboarding-shape-1 { width: 14px; height: 14px; top: 6px; right: 22px; animation: onboardingFloat 4.5s var(--ease-in-out) infinite; }
+.onboarding-shape-2 { width: 9px;  height: 9px;  bottom: 14px; left: 8px; opacity: 0.35; animation: onboardingFloat 3.8s var(--ease-in-out) infinite 0.4s reverse; }
+.onboarding-shape-3 { width: 11px; height: 11px; bottom: 30px; right: 2px; opacity: 0.4; animation: onboardingFloat 5.2s var(--ease-in-out) infinite 0.8s; }
+
+.onboarding-icon {
+  width: 112px;
+  height: 112px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--slide-color) 0%, var(--slide-color-dark) 100%);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 16px 32px -8px color-mix(in srgb, var(--slide-color) 55%, transparent), var(--shadow-lg);
+  animation: onboardingIconPop 0.6s var(--ease-out) both;
+}
+
+.onboarding-icon svg { width: 56px; height: 56px; }
+
+.onboarding-kicker {
+  display: inline-block;
+  padding: 5px 14px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--slide-color-dark);
+  background: color-mix(in srgb, var(--slide-color) 16%, var(--surface));
+}
+
+@keyframes onboardingGlowPulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.06); }
+}
+
+@keyframes onboardingFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+
+@keyframes onboardingIconPop {
+  0% { opacity: 0; transform: scale(0.55) rotate(-6deg); }
+  65% { opacity: 1; transform: scale(1.06) rotate(2deg); }
+  100% { opacity: 1; transform: scale(1) rotate(0deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .onboarding-icon-wrap, .onboarding-shape, .onboarding-icon { animation: none; }
+}
+
+.onboarding-title {
+  font-family: var(--font-display);
+  font-size: 1.875rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  color: var(--dark);
+  max-width: 320px;
+}
+
+.onboarding-body {
+  font-size: 1rem;
+  line-height: 1.6;
+  color: var(--text-muted);
+  max-width: 310px;
+}
+
+.onboarding-footer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+}
+
+.onboarding-dots { display: flex; gap: 8px; }
+
+/* Fixed-size hit target (never reflows on active/inactive toggle) — the
+   visible mark is an absolutely-positioned ::before that grows via
+   transform: scaleX instead of animating width, so the pill-out motion is
+   transform-only (cheap) rather than a layout property. */
+.onboarding-dot {
+  position: relative;
+  width: 22px;
+  height: 8px;
+  padding: 0;
+}
+
+.onboarding-dot::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--border);
+  transform-origin: left center;
+  transition: background 220ms var(--ease-out), transform 220ms var(--ease-out);
+}
+
+.onboarding-dot.active::before { transform: scaleX(2.75); background: var(--dot-color, var(--primary)); }
+.onboarding-dot:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+
+/* "Next" is colored per-slide (matches the icon gradient); the final slide's
+   "Get started" CTA stays the standard navy .btn-dark — that's the one
+   conversion moment shared with the rest of the app's primary-action color. */
+.onboarding-next-btn {
+  background: linear-gradient(135deg, var(--slide-color) 0%, var(--slide-color-dark) 100%);
+  color: #fff;
+  box-shadow: 0 10px 24px -6px color-mix(in srgb, var(--slide-color) 50%, transparent);
+}
+
+.onboarding-next-btn:active { transform: scale(0.98); }
+
+@keyframes onboardingSlideIn {
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .onboarding-slide { animation: none; opacity: 1; transform: none; }
+}
+
+/* Interests screen */
+.onboarding-interests-screen .onboarding-footer { margin-top: 24px; }
+
+.onboarding-interests-header {
+  text-align: center;
+  padding: 8px 4px 28px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.onboarding-interests-badge {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8px 20px rgba(255, 122, 89, 0.3);
+}
+
+.onboarding-interests-badge svg { width: 26px; height: 26px; }
+
+.onboarding-interests-header .onboarding-title { font-size: 1.375rem; }
+.onboarding-interests-header .onboarding-body { max-width: 320px; }
+
+.onboarding-interest-grid {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  align-content: start;
+  padding-bottom: 24px;
+}
+
+.onboarding-interest-chip {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 14px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  text-align: left;
+  transition: border-color 160ms var(--ease-out), background 160ms var(--ease-out), transform 120ms var(--ease-out);
+}
+
+.onboarding-interest-chip:active { transform: scale(0.97); }
+
+.onboarding-interest-chip-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--chip-color) 16%, transparent);
+  color: var(--chip-color);
+}
+
+.onboarding-interest-chip-label {
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--dark);
+  line-height: 1.25;
+}
+
+.onboarding-interest-chip-check {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: #fff;
+  display: none;
+  align-items: center;
+  justify-content: center;
+}
+
+.onboarding-interest-chip-check svg { width: 11px; height: 11px; }
+
+.onboarding-interest-chip.active {
+  border-color: var(--chip-color);
+  background: color-mix(in srgb, var(--chip-color) 9%, var(--surface));
+}
+
+.onboarding-interest-chip.active .onboarding-interest-chip-check { display: flex; }
+
+/* ============================================================
+   DISCOVERY SHEET — one-time "there's more here" nudge shown right
+   after onboarding lands on Home (see features/onboarding/onboarding.js)
+   ============================================================ */
+.discovery-sheet-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 16px 0 4px;
+}
+
+.discovery-sheet-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border-radius: var(--radius-sm);
+  background: var(--gray-light);
+  text-align: left;
+  transition: background 140ms var(--ease-out);
+}
+
+.discovery-sheet-row:active { background: var(--primary-light); }
+
+.discovery-sheet-row-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface);
+  color: var(--primary);
+}
+
+.discovery-sheet-row-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.discovery-sheet-row-title { font-size: 0.875rem; font-weight: 700; color: var(--dark); }
+.discovery-sheet-row-body { font-size: 0.8125rem; color: var(--text-muted); line-height: 1.4; }
+
 @media (prefers-reduced-motion: reduce) {
   .gift-box-lid,
   .gift-box-base {

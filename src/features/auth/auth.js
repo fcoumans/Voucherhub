@@ -86,7 +86,11 @@ export async function register(firstName, lastName, email, password) {
   }
   state.currentUser = mapUser(data.user);
   await tryClaimPendingGift();
-  go('home');
+  // Brand-new account, confirmed immediately (no email-confirmation step
+  // required) — send them through the welcome-gift interests screen instead
+  // of straight to Home. A returning login() never takes this path.
+  state.onboardingInterests = new Set();
+  go('onboarding-interests');
   return null;
 }
 

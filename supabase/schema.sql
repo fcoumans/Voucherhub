@@ -42,7 +42,12 @@ CREATE TABLE public.users (
   first_name     TEXT,
   last_name      TEXT,
   last_active_at TIMESTAMPTZ,
-  created_at     TIMESTAMPTZ DEFAULT now()
+  created_at     TIMESTAMPTZ DEFAULT now(),
+  -- Onboarding: category names picked on the post-signup "what are you
+  -- into?" screen (drives which welcome-gift voucher onboarding grants),
+  -- and the timestamp that screen was finished/skipped so it never re-shows.
+  interests               JSONB NOT NULL DEFAULT '[]'::jsonb,
+  onboarding_completed_at TIMESTAMPTZ
 );
 
 ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
@@ -868,26 +873,32 @@ GRANT EXECUTE ON FUNCTION public.notify_listing_interest(UUID) TO authenticated;
 -- RLS on brands is row-level only, so it can't restrict which COLUMNS
 -- change on a row the caller doesn't own. This trigger enforces the
 -- actual boundary: only `category` (any time) and `description` (once,
--- from NULL) may differ from the existing row.
+-- from NULL) may differ from the existing row. Scoped to real end-user
+-- requests through the app (auth.role() = 'authenticated', set per-request
+-- by PostgREST) — a direct SQL/admin session (SQL editor, service role)
+-- carries no JWT claims, so auth.role() is NULL there and this guard
+-- doesn't apply, letting the project owner fix brand data directly.
 CREATE OR REPLACE FUNCTION public.brands_guard_update()
 RETURNS trigger
 LANGUAGE plpgsql SET search_path = public
 AS $$
 BEGIN
-  IF NEW.id IS DISTINCT FROM OLD.id
-     OR NEW.name IS DISTINCT FROM OLD.name
-     OR NEW.domain IS DISTINCT FROM OLD.domain
-     OR NEW.logo_url IS DISTINCT FROM OLD.logo_url
-     OR NEW.created_by IS DISTINCT FROM OLD.created_by
-     OR NEW.created_at IS DISTINCT FROM OLD.created_at
-  THEN
-    RAISE EXCEPTION 'brands: only category and description (once) may be updated'
-      USING ERRCODE = '42501';
-  END IF;
+  IF auth.role() = 'authenticated' THEN
+    IF NEW.id IS DISTINCT FROM OLD.id
+       OR NEW.name IS DISTINCT FROM OLD.name
+       OR NEW.domain IS DISTINCT FROM OLD.domain
+       OR NEW.logo_url IS DISTINCT FROM OLD.logo_url
+       OR NEW.created_by IS DISTINCT FROM OLD.created_by
+       OR NEW.created_at IS DISTINCT FROM OLD.created_at
+    THEN
+      RAISE EXCEPTION 'brands: only category and description (once) may be updated'
+        USING ERRCODE = '42501';
+    END IF;
 
-  IF NEW.description IS DISTINCT FROM OLD.description AND OLD.description IS NOT NULL THEN
-    RAISE EXCEPTION 'brands: description can only be set once, not overwritten'
-      USING ERRCODE = '42501';
+    IF NEW.description IS DISTINCT FROM OLD.description AND OLD.description IS NOT NULL THEN
+      RAISE EXCEPTION 'brands: description can only be set once, not overwritten'
+        USING ERRCODE = '42501';
+    END IF;
   END IF;
 
   RETURN NEW;

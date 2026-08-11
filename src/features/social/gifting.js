@@ -5,7 +5,7 @@
 // since the gift-reveal card renders a voucher the same way the wallet does.
 import { supabase } from '../../lib/supabase.js';
 import { state } from '../../core/state.js';
-import { esc, mountOverlay, closeOverlay } from '../../core/dom.js';
+import { esc, mountOverlay, closeOverlay, spawnConfetti } from '../../core/dom.js';
 import { showToast } from '../../core/toast.js';
 import { icon } from '../../core/ui.js';
 import { go } from '../../core/router.js';
@@ -163,23 +163,7 @@ function showGiftRevealAnimation(voucher) {
     const confettiLayer = overlay.querySelector('#gift-confetti');
     // Emerald + Amber Ribbon (the gifting-only accent) in a square/dot mix —
     // a uniform grid of identical squares reads static, this reads as confetti.
-    const colors = ['#13B5A2', '#F98513', '#2BD4BE', '#D6710A', '#FFFFFF'];
-    for (let i = 0; i < 52; i++) {
-      const piece = document.createElement('div');
-      const isDot = i % 2 === 0;
-      piece.className = 'confetti-piece' + (isDot ? ' confetti-piece-dot' : '');
-      const angle = Math.random() * Math.PI * 2;
-      const distance = 90 + Math.random() * 170;
-      const size = 6 + Math.random() * 6;
-      piece.style.setProperty('--x', `${Math.cos(angle) * distance}px`);
-      piece.style.setProperty('--y', `${Math.sin(angle) * distance - 40}px`);
-      piece.style.setProperty('--rot', `${Math.random() * 720 - 360}deg`);
-      piece.style.setProperty('--delay', `${Math.random() * 0.18}s`);
-      piece.style.width = `${size}px`;
-      piece.style.height = `${size}px`;
-      piece.style.background = colors[i % colors.length];
-      confettiLayer.appendChild(piece);
-    }
+    spawnConfetti(confettiLayer, ['#13B5A2', '#F98513', '#2BD4BE', '#D6710A', '#FFFFFF']);
 
     const boxEl  = overlay.querySelector('#gift-reveal-box');
     const cardEl = overlay.querySelector('#gift-reveal-card');

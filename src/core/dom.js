@@ -109,6 +109,32 @@ function springTranslateY(el, from, to, velocityPxMs, onSettle) {
   requestAnimationFrame(frame);
 }
 
+// Scatters `count` confetti pieces (alternating squares/dots) from the
+// center of `container` outward, in random directions/sizes/rotations —
+// shared by the gift-claim reveal (features/social/gifting.js) and the
+// onboarding welcome-gift reveal (features/onboarding/onboarding.js), the
+// app's two "rare, first-time celebratory moment" screens (see
+// BRAND_GUIDELINES.md Surface System). Caller adds the `.burst` class on
+// `container` afterward (or on a later frame) to trigger the CSS animation.
+export function spawnConfetti(container, colors, count = 52) {
+  for (let i = 0; i < count; i++) {
+    const piece = document.createElement('div');
+    const isDot = i % 2 === 0;
+    piece.className = 'confetti-piece' + (isDot ? ' confetti-piece-dot' : '');
+    const angle = Math.random() * Math.PI * 2;
+    const distance = 90 + Math.random() * 170;
+    const size = 6 + Math.random() * 6;
+    piece.style.setProperty('--x', `${Math.cos(angle) * distance}px`);
+    piece.style.setProperty('--y', `${Math.sin(angle) * distance - 40}px`);
+    piece.style.setProperty('--rot', `${Math.random() * 720 - 360}deg`);
+    piece.style.setProperty('--delay', `${Math.random() * 0.18}s`);
+    piece.style.width = `${size}px`;
+    piece.style.height = `${size}px`;
+    piece.style.background = colors[i % colors.length];
+    container.appendChild(piece);
+  }
+}
+
 const SHEET_DISMISS_DISTANCE_RATIO = 0.35;
 const SHEET_DISMISS_VELOCITY = 0.6; // px/ms
 

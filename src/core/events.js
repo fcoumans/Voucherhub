@@ -30,6 +30,7 @@ import { fetchReminders } from '../features/notifications/reminders.js';
 import { subscribeToPush, unsubscribeFromPush, getPushStatus, updatePushStatusLabel } from '../features/notifications/push.js';
 import { markActivityNotificationRead, markAllActivityNotificationsRead } from '../features/notifications/activity.js';
 import { fetchReferrals, saveReferral, updateReferral, deleteReferral, toggleReferralUse } from '../features/referrals/referrals.js';
+import { finishOnboardingInterests } from '../features/onboarding/onboarding.js';
 
 let _listenersAttached = false;
 
@@ -103,7 +104,23 @@ function handleClick(e) {
     }
     if (navEl.dataset.marketplaceTabInit) state.marketplaceTab = navEl.dataset.marketplaceTabInit;
     if (navEl.dataset.referralTabInit)    state.referralTab    = navEl.dataset.referralTabInit;
+    if (view === 'onboarding') state.onboardingSlide = 0; // always start the value carousel from slide 1
     go(view, params);
+    return;
+  }
+
+  // Carousel slide nav (Next / Back / dot) — a plain state mutation +
+  // re-render, same pattern as the category filters below, not a go()
+  // navigation (there's nothing to fetch and no back-stack entry to add).
+  const obSlide = e.target.closest('[data-onboarding-slide]');
+  if (obSlide) { state.onboardingSlide = parseInt(obSlide.dataset.onboardingSlide, 10) || 0; render(); return; }
+
+  const obInterest = e.target.closest('[data-onboarding-interest]');
+  if (obInterest) {
+    const cat = obInterest.dataset.onboardingInterest;
+    if (state.onboardingInterests.has(cat)) state.onboardingInterests.delete(cat);
+    else state.onboardingInterests.add(cat);
+    render();
     return;
   }
 
@@ -455,6 +472,14 @@ async function handleAction(el, e) {
 
     case 'logout':
       showConfirm({ title: 'Log Out?', message: 'You will be returned to the login screen.', confirmLabel: 'Log Out', onConfirm: logout });
+      break;
+
+    case 'onboarding-finish':
+      // Both "Skip for now" and the primary continue button land here —
+      // finishOnboardingInterests() itself decides whether there's a gift
+      // to grant based on state.onboardingInterests.
+      el.disabled = true;
+      await finishOnboardingInterests();
       break;
   }
 }

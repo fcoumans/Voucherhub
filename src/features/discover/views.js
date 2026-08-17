@@ -5,6 +5,7 @@ import { LOGODEV_TOKEN } from '../../core/brands.js';
 import { icon, renderHeader, renderBottomNav, navIcons } from '../../core/ui.js';
 import { categoryBadge, categoryFilterDropdown } from '../../core/categories.js';
 import { getDiscoveryCategories, getDiscoveryRegions } from './discover.js';
+import { isPlanetB, planetBHeroHtml, planetBHeaderLogoHtml, planetBFavoriteTag, pinPlanetBFirst, PLANET_B_SHORT_DESCRIPTION } from '../../core/brand-themes.js';
 
 function discoveryLogoUrl(b) {
   if (b.logoUrl) return b.logoUrl;
@@ -35,6 +36,7 @@ function discoveryBrandCard(b) {
     ${discoveryAvatar(b, 46)}
     <div class="vc-info">
       <div class="vc-brand">${esc(b.name)}</div>
+      ${isPlanetB(b.name) ? `<div style="margin-top:3px">${planetBFavoriteTag()}</div>` : ''}
       <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:3px">${b.categories.map(c => categoryBadge(c)).join('')}</div>
       <div style="font-size:0.75rem;color:var(--text-muted);margin-top:3px">${esc(b.regions.join(', '))}</div>
     </div>
@@ -51,6 +53,7 @@ export function viewDiscover() {
   if (catFilter !== 'All') list = list.filter(b => b.categories.includes(catFilter));
   if (regionFilter !== 'All') list = list.filter(b => b.regions.includes(regionFilter));
   if (q) list = list.filter(b => b.name.toLowerCase().includes(q));
+  list = pinPlanetBFirst(list, b => b.name);
 
   const regionOptions = getDiscoveryRegions().map(r =>
     `<option value="${esc(r)}" ${regionFilter===r?'selected':''}>${r==='All'?'All regions':esc(r)}</option>`
@@ -102,9 +105,13 @@ export function viewDiscoverDetail() {
     ${renderBottomNav()}`;
   }
 
+  const branded = isPlanetB(b.name);
+  const brandedHeaderLogo = branded ? planetBHeaderLogoHtml() : null;
+
   return `
-  ${renderHeader(b.name, 'discover')}
-  <main class="content">
+  ${renderHeader(b.name, 'discover', {}, '', branded ? { centerHtml: brandedHeaderLogo || undefined, headerClass: 'pb-header' } : {})}
+  <main class="content${branded ? ' pb-detail-page' : ''}">
+    ${branded ? planetBHeroHtml(b.websiteUrl) : `
     <div style="display:flex;align-items:center;gap:14px;margin-bottom:18px">
       ${discoveryAvatar(b, 64)}
       <div>
@@ -119,9 +126,14 @@ export function viewDiscoverDetail() {
       </div>
     </div>
     ${b.location ? `<div class="text-muted" style="font-size:0.8125rem;margin-bottom:16px">${esc(b.location)}</div>` : ''}
-    <p style="font-size:0.9375rem;line-height:1.6;margin:16px 0">${esc(b.description)}</p>
-    ${b.funFact ? `<div class="sell-hint" style="background:var(--success-light);color:var(--text)">${icon.info} ${esc(b.funFact)}</div>` : ''}
-    <a class="btn btn-primary btn-full" style="margin-top:8px;display:flex" href="${esc(b.websiteUrl)}" target="_blank" rel="noopener noreferrer">${icon.link} Buy Gift Card</a>
+    `}
+    <p style="font-size:0.9375rem;line-height:1.6;margin:16px 0">${esc(branded ? PLANET_B_SHORT_DESCRIPTION : b.description)}</p>
+    ${b.funFact
+      ? (branded
+          ? `<p class="pb-funfact">${icon.info} ${esc(b.funFact)}</p>`
+          : `<div class="sell-hint" style="background:var(--success-light);color:var(--text)">${icon.info} ${esc(b.funFact)}</div>`)
+      : ''}
+    <a class="btn btn-full${branded ? ' pb-cta' : ' btn-primary'}" style="margin-top:8px;display:flex" href="${esc(b.websiteUrl)}" target="_blank" rel="noopener noreferrer">${icon.link} Buy Gift Card</a>
     ${hostname ? `<p class="text-muted" style="font-size:0.75rem;text-align:center;margin-top:8px">Opens ${esc(hostname)} in a new tab — you'll pay the brand directly</p>` : ''}
   </main>
   ${renderBottomNav()}`;

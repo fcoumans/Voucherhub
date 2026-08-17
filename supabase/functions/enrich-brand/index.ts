@@ -21,6 +21,28 @@ function extractTag(html: string, pattern: RegExp): string | null {
   return match?.[1]?.trim() || null;
 }
 
+// The prompt already tells the model to write one neutral sentence instead
+// of refusing when it doesn't recognize a brand, but that instruction
+// isn't always followed — it sometimes hedges/refuses in its own voice
+// instead ("I'm not able to identify X with confidence..."). Rather than
+// save that as if it were real brand copy, treat it as "no description"
+// so the app just shows nothing (see core/brands.js's getBrandDescription
+// callers, which already skip rendering when description is null).
+const REFUSAL_PATTERNS = [
+  /\bnot able to identify\b/i,
+  /\bnot familiar with\b/i,
+  /\bdon'?t recognize\b/i,
+  /\bdon'?t have (enough |specific )?information\b/i,
+  /\bcannot (confirm|verify)\b/i,
+  /\bwithout risking inaccuracy\b/i,
+  /\bcan'?t provide specific\b/i,
+  /\bunable to (find|locate|confirm)\b/i,
+  /\bI'm not (certain|sure) (about|what)\b/i,
+];
+function looksLikeRefusal(text: string): boolean {
+  return REFUSAL_PATTERNS.some((p) => p.test(text));
+}
+
 // Pulls just the title + meta description so the AI describes the actual
 // site instead of guessing from the brand name (which can collide with a
 // more famous, differently-named business — e.g. "La Bottega").
@@ -136,6 +158,14 @@ Deno.serve(async (req) => {
   if (!description) {
     console.error('enrich-brand: empty AI response', brandId, JSON.stringify(aiJson));
     return jsonResponse({ error: 'Empty AI response' }, 502);
+  }
+  if (looksLikeRefusal(description)) {
+    // Leave brands.description NULL rather than store a hedge/refusal as
+    // if it were real copy — ensureBrand()'s `if (!existing.description)`
+    // check means this brand will just get another enrichment attempt
+    // next time it's used, instead of being stuck showing this forever.
+    console.log('enrich-brand: refusal-shaped response, leaving description blank', brandId, description);
+    return jsonResponse({ description: null, skipped: true });
   }
 
   const { error: updateErr } = await supabase

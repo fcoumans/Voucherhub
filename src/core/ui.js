@@ -121,13 +121,20 @@ export function renderBottomNav() {
 // the arrow itself always returns to whatever page was actually on screen
 // before (router.js's goBack/navStack), not to this fixed destination. Kept
 // as params so call sites don't need to change just to show/hide the arrow.
-export function renderHeader(title, backView, backParams = {}, rightAction = '') {
+// `centerHtml`/`headerClass` (opts) let one-off branded pages (e.g. Planet B's
+// Discover detail page) swap the plain text title for a logo and restyle the
+// bar itself, without every other call site having to know about it —
+// both default to the normal text-title, transparent-chrome header.
+export function renderHeader(title, backView, backParams = {}, rightAction = '', opts = {}) {
+  const { centerHtml, headerClass = '' } = opts;
   const isHome = title === 'VoucherWise';
-  const centerContent = isHome
-    ? `<span class="header-brand">VoucherWise</span>`
-    : `<span class="header-title">${esc(title)}</span>`;
+  const centerContent = centerHtml
+    ? centerHtml
+    : isHome
+      ? `<span class="header-brand">VoucherWise</span>`
+      : `<span class="header-title">${esc(title)}</span>`;
   return `
-  <header class="app-header ${isHome ? 'app-header--brand' : ''}">
+  <header class="app-header ${isHome ? 'app-header--brand' : ''} ${headerClass}">
     <div class="header-left">
       ${backView ? `<button class="btn-back" data-back="1">${icon.back}</button>` : ''}
     </div>

@@ -5,22 +5,24 @@ import { esc } from '../../core/dom.js';
 import { getBrandDescription } from '../../core/brands.js';
 import { icon, avatar, renderHeader, renderBottomNav, navIcons, brandAutocomplete } from '../../core/ui.js';
 import { categoryBadge, categoryFilterDropdown } from '../../core/categories.js';
+import { isPlanetB, planetBFavoriteTag, pinPlanetBFirst, planetBHeroHtml, planetBHeaderLogoHtml } from '../../core/brand-themes.js';
 
 /* ============================================================
    VIEW: REFERRALS
    ============================================================ */
-function referralCard(r, isOwn = false) {
+function referralCard(r, isOwn = false, isFriend = false) {
   const vote = state.referralVotes[r.id] || null;
   const usedByMe = state.myReferralUses.has(r.id);
+  // Who this code is from, always on the card itself — not implied by
+  // whichever tab/filter got you here.
+  const relation = isOwn ? 'Your code' : isFriend ? `From ${esc(r.ownerName || 'a friend')}` : 'Public code';
   return `
   <div class="referral-card">
     <div class="rc-header">
       ${avatar(r.brand, 40)}
       <div class="rc-info">
         <div class="rc-brand">${esc(r.brand)}</div>
-        <div class="rc-owner">${isOwn ? 'Your code' : esc(r.ownerName || 'Community')}
-          ${r.visibility === 'friends' ? ' · <span class="badge badge-primary" style="font-size:0.6rem;padding:2px 5px">Friends</span>' : ''}
-        </div>
+        <div class="rc-owner">${relation}</div>
         ${r.category ? `<div style="margin-top:5px">${categoryBadge(r.category)}</div>` : ''}
       </div>
       <div style="display:flex;align-items:center;gap:4px">
@@ -93,27 +95,35 @@ export function viewReferrals() {
 
   /* ---- CODE LIST (brand drill-down) ---- */
   if (brand) {
-    let visible = pool.filter(r => r.brand === brand);
+    const branded = isPlanetB(brand);
+    // The branded page drops the Public/Friends/Mine tabs (each card
+    // states its own relation instead — see referralCard()'s `relation`),
+    // so it pools every code for the brand the user can see, not just
+    // whichever tab was last selected.
+    let visible = (branded ? all : pool).filter(r => r.brand === brand);
     if (q) visible = visible.filter(r => r.code.toLowerCase().includes(q) || r.brand.toLowerCase().includes(q));
     visible = [...visible].sort((a, b) => (b.usedCount || 0) - (a.usedCount || 0));
     const brandDesc = getBrandDescription(brand);
 
     return `
-    <header class="app-header">
+    <header class="app-header${branded ? ' pb-header' : ''}">
       <div class="header-left"><button class="btn-back" data-action="clear-referral-brand">${icon.back}</button></div>
-      <span class="header-title">${esc(brand)}</span>
+      ${branded ? planetBHeaderLogoHtml() : `<span class="header-title">${esc(brand)}</span>`}
       <div class="header-right"></div>
     </header>
-    <main class="content">
-      ${brandDesc ? `<p class="text-muted" style="font-size:0.875rem;margin-bottom:14px">${esc(brandDesc)}</p>` : ''}
-      ${tabs}
+    <main class="content${branded ? ' pb-detail-page' : ''}">
+      ${branded ? planetBHeroHtml() : ''}
+      ${!branded && brandDesc ? `<p class="text-muted" style="font-size:0.875rem;margin-bottom:14px">${esc(brandDesc)}</p>` : ''}
+      ${branded ? '' : tabs}
+      ${branded ? '' : `
       <div class="search-bar" style="margin-bottom:16px">
         <span class="search-icon">${icon.search}</span>
         <input type="search" placeholder="Search code…" value="${esc(state.searchQuery)}" data-search="referrals">
       </div>
       <button class="btn btn-ghost btn-sm" style="margin-bottom:12px" data-action="clear-referral-brand">← All brands</button>
+      `}
       ${visible.length > 0
-        ? visible.map(r => referralCard(r, r.userId === uid)).join('')
+        ? visible.map(r => referralCard(r, r.userId === uid, friendIds.includes(r.userId))).join('')
         : `<div class="empty-state"><div class="empty-icon">${navIcons.referrals}</div><h3>No codes for ${esc(brand)}</h3><p>${q ? 'Try a different search' : 'No referral codes match this filter'}</p></div>`
       }
     </main>
@@ -133,13 +143,17 @@ export function viewReferrals() {
     if (!brandMap.has(r.brand)) brandMap.set(r.brand, []);
     brandMap.get(r.brand).push(r);
   }
-  const brandList = [...brandMap.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  const brandList = pinPlanetBFirst(
+    [...brandMap.entries()].sort((a, b) => a[0].localeCompare(b[0])),
+    ([name]) => name,
+  );
 
   const brandCards = brandList.map(([brandName, codes]) => `
     <div class="voucher-card" style="cursor:pointer" data-referral-brand="${esc(brandName)}">
       ${avatar(brandName, 42)}
       <div class="vc-info">
         <div class="vc-brand">${esc(brandName)}</div>
+        ${isPlanetB(brandName) ? `<div style="margin-top:3px">${planetBFavoriteTag()}</div>` : ''}
         <div class="vc-code" style="font-size:0.8rem;opacity:0.7">${codes.length} code${codes.length!==1?'s':''}</div>
       </div>
       <div class="vc-right" style="color:var(--primary)">›</div>

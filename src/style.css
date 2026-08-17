@@ -3308,6 +3308,265 @@ p { line-height: 1.5; }
 }
 
 /* ============================================================
+   PLANET B — bespoke brand treatment for one Discover catalog entry (see
+   core/brand-themes.js). Its own navy/purple/mint/yellow palette is
+   deliberate and doesn't follow the app's own color tokens — this is the
+   one brand in the app styled to look like itself, on its own detail page.
+   ============================================================ */
+.pb-detail-page { background: #F0D1CC; }
+
+/* Header for the branded page: pink instead of white, no seam/shadow
+   against the pink content below it, the real logo instead of the plain
+   text title (see features/discover/views.js). */
+.pb-header {
+  background: #F0D1CC;
+  border-bottom: none;
+  box-shadow: none;
+}
+
+.pb-header .btn-back { color: #151F3A; }
+
+.pb-page-tagline {
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  font-weight: 600;
+  margin-bottom: 14px;
+}
+
+.pb-banner {
+  display: block;
+  width: 100%;
+  height: 190px;
+  object-fit: cover;
+  object-position: center 68%;
+  border-radius: var(--radius);
+  margin-bottom: 16px;
+  background: #E7BEB6;
+}
+
+.pb-card {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1.6 / 1;
+  border-radius: var(--radius);
+  background: #151F3A;
+  color: #fff;
+  overflow: hidden;
+  box-shadow: 0 16px 32px -10px rgba(21, 31, 58, 0.4);
+}
+
+.pb-card-top {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 16px 16px 0;
+}
+
+.pb-card-balance {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 1.5rem;
+  letter-spacing: -0.01em;
+  color: #F4E45A;
+}
+
+.pb-card-slogan {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: clamp(0.8125rem, 3.2vw, 1rem);
+  line-height: 1.15;
+  color: #8FF3D3;
+  text-align: right;
+}
+
+.pb-card-wave {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  height: 48%;
+  z-index: 1;
+  display: block;
+}
+
+.pb-card-bottom {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px 10px 10px;
+}
+
+.pb-card-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 0.9375rem;
+  color: #fff;
+}
+
+.pb-card-pill {
+  font-family: var(--font-body);
+  font-weight: 700;
+  font-size: 0.75rem;
+  color: #151F3A;
+  background: #F4E45A;
+  padding: 5px 12px;
+  border-radius: 999px;
+}
+
+.pb-page-mission {
+  margin: 16px 4px 4px;
+  font-size: 0.875rem;
+  line-height: 1.55;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.pb-subbrands {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 14px;
+  margin-bottom: 22px;
+}
+
+.pb-subbrand {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  border-radius: var(--radius);
+  padding: 12px 12px 64px;
+  overflow: hidden;
+  min-height: 150px;
+}
+
+.pb-subbrand-pill {
+  background: #fff;
+  color: #151F3A;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  padding: 4px 10px;
+  border-radius: 999px;
+  margin-bottom: 8px;
+}
+
+.pb-subbrand-name {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 1.125rem;
+  color: #151F3A;
+  letter-spacing: -0.01em;
+}
+
+.pb-subbrand-desc {
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: #3A3428;
+  margin-top: 4px;
+}
+
+.pb-subbrand-cta {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #151F3A;
+  z-index: 2;
+}
+
+.pb-subbrand-img {
+  position: absolute;
+  right: -6px;
+  bottom: -6px;
+  width: 74px;
+  height: 74px;
+  object-fit: contain;
+  pointer-events: none;
+}
+
+/* Fun fact, on the branded page: plain text in the page's own voice, not a
+   boxed callout — the green .sell-hint treatment reads as a generic app
+   component, not part of Planet B's own page. */
+.pb-funfact {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 4px 0 0;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: #151F3A;
+}
+
+.pb-funfact svg { flex-shrink: 0; margin-top: 2px; color: #4B3FE6; }
+
+/* "Buy Gift Card" CTA, on the branded page: navy instead of the app's own
+   teal primary — matches the logo/card color instead of VoucherWise's own. */
+.pb-cta { background: #151F3A; color: #fff; }
+.pb-cta:hover, .pb-cta:active { background: #0D1526; }
+
+/* "Community Favorite" tag on the Discover/Referrals list-row cards — an
+   inline pill in the card's own text flow (not a floating ribbon/badge), a
+   soft purple wash matching the app's own category-chip recipe (light
+   tint + colored text, not a solid fill) so it fits the card's language
+   instead of fighting it. The shine still gives it its "featured" moment —
+   a brief pass every few seconds, idling off-screen the rest of the time,
+   so a whole list of these never feels busy. */
+.pb-favorite-tag {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.6875rem;
+  font-weight: 800;
+  letter-spacing: 0.015em;
+  color: #4B3FE6;
+  background: rgba(75, 63, 230, 0.1);
+  padding: 4px 10px 4px 8px;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.pb-favorite-tag svg { flex-shrink: 0; color: #4B3FE6; }
+
+.pb-favorite-tag::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -60%;
+  width: 40%;
+  height: 100%;
+  background: linear-gradient(115deg, transparent, rgba(255, 255, 255, 0.7), transparent);
+  transform: skewX(-20deg);
+  animation: pbFavoriteShine 3.2s ease-in-out infinite;
+}
+
+@keyframes pbFavoriteShine {
+  0%   { left: -60%; }
+  18%  { left: 130%; }
+  100% { left: 130%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pb-favorite-tag::after { animation: none; display: none; }
+}
+
+/* ============================================================
    RESPONSIVE (desktop)
    ============================================================ */
 @media (min-width: 480px) {

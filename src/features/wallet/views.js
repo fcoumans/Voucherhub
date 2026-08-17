@@ -9,6 +9,7 @@ import { icon, avatar, renderHeader, renderBottomNav, navIcons, brandAutocomplet
 import { categoryBadge, categoryFilterDropdown } from '../../core/categories.js';
 import { voucherFormState } from './voucher-form-state.js';
 import { formatVoucherValue, getStatus, formatMonthYear, formatFullDate, STATUS_LABEL, STATUS_CLASS } from './vouchers.js';
+import { isPlanetB, planetBCardHtml, planetBCardPill } from '../../core/brand-themes.js';
 
 const badge = (status) =>
   `<span class="badge ${STATUS_CLASS[status] || 'badge-gray'}">${STATUS_LABEL[status] || esc(status)}</span>`;
@@ -601,11 +602,18 @@ export function viewVoucherDetail() {
   return `
   ${renderHeader(v.brand, 'vouchers', {}, rightAction)}
   <main class="content">
+    ${isPlanetB(v.brand) ? `
+    <div class="pb-wallet-card">
+      ${planetBCardHtml(avatar(v.brand, 34), planetBCardPill(v))}
+      <div class="vd-status" style="text-align:center;margin-top:12px">${badge(s)}</div>
+    </div>
+    ` : `
     <div class="voucher-detail-header">
       <div class="vd-brand">${esc(v.brand)}</div>
       <div class="vd-value${v.valueDescription ? ' vd-value-text' : ''}">${formatVoucherValue(v, v.balance != null ? v.balance : v.value)}</div>
       <div class="vd-status">${badge(s)}</div>
     </div>
+    `}
 
     ${v.giftMessage || v.giftSender ? `
     <div class="gift-note-display">
@@ -663,7 +671,7 @@ export function viewVoucherDetail() {
         <div class="detail-item-label">Value</div>
         <div class="detail-item-value" style="font-weight:400;font-size:0.875rem">${esc(v.valueDescription)}</div>
       </div>
-      ` : `
+      ` : isPlanetB(v.brand) ? '' : `
       <div class="detail-item">
         <div class="detail-item-label">Original Value</div>
         <div class="detail-item-value detail-item-value-money">${formatCurrency(v.value, v.currency)}</div>
